@@ -1,0 +1,20 @@
+{
+  "name": "@oadt/protocol",
+  "version": "0.1.0",
+  "description": "The observe-agents-do-things event protocol: types, a pure state projection, and selectors. Zero dependencies, runs anywhere.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.test.*"
+  ],
+  "sideEffects": false
+}

@@ -1,0 +1,33 @@
+{
+  "name": "observe-agents-do-things",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Watch Claude Code and Codex agents work in real time — a read-only observer with a clean event API and swappable frontends.",
+  "license": "MIT",
+  "type": "module",
+  "workspaces": [
+    "packages/protocol",
+    "packages/core",
+    "packages/client",
+    "packages/server",
+    "apps/web"
+  ],
+  "scripts": {
+    "build": "npm run build:packages && npm run build:web",
+    "build:packages": "tsc -b packages/protocol packages/core packages/client packages/server",
+    "build:web": "npm run build --workspace apps/web && node scripts/copy-ui.mjs",
+    "start": "node packages/server/dist/cli.js",
+    "demo": "node packages/server/dist/cli.js --demo --open",
+    "dev": "node scripts/dev.mjs",
+    "test": "npm run build:packages && node scripts/test.mjs",
+    "typecheck": "tsc -b packages/protocol packages/core packages/client packages/server && npm run typecheck --workspace apps/web",
+    "clean": "node scripts/clean.mjs"
+  },
+  "engines": {
+    "node": ">=20.11"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.2"
+  }
+}

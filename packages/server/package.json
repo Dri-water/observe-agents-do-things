@@ -1,0 +1,31 @@
+{
+  "name": "@oadt/server",
+  "version": "0.1.0",
+  "description": "observe-agents-do-things: HTTP + Server-Sent Events API and CLI (`oadt`) that serves the live agent view.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "oadt": "./dist/cli.js",
+    "observe-agents": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "ui",
+    "!dist/**/*.test.*"
+  ],
+  "dependencies": {
+    "@oadt/core": "0.1.0",
+    "@oadt/protocol": "0.1.0"
+  },
+  "devDependencies": {
+    "@oadt/client": "0.1.0"
+  }
+}

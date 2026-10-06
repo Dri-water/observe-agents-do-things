@@ -1,0 +1,60 @@
+<!doctype html>
+<!--
+  The smallest possible frontend: one HTML file, no build, no dependencies.
+  It reads the raw event stream with the browser's built-in EventSource.
+
+    oadt --ui examples/minimal-feed
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Minimal agent feed</title>
+  <style>
+    :root { color-scheme: dark; }
+    body { margin: 0; background: #0b0d12; color: #d7dde8; font: 14px/1.5 ui-monospace, Menlo, Consolas, monospace; }
+    header { position: sticky; top: 0; padding: 12px 16px; background: #0b0d12ee; border-bottom: 1px solid #1d2230; display: flex; gap: 16px; }
+    header b { color: #fff; }
+    #log { padding: 8px 16px; }
+    .row { padding: 3px 0; border-bottom: 1px solid #ffffff08; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .who { color: #7aa2f7; }
+    .tool { color: #e0af68; }
+    .bad { color: #f7768e; }
+    .msg { color: #c0caf5; }
+    .dim { color: #565f89; }
+  </style>
+</head>
+<body>
+  <header><b>agents</b><span id="summary" class="dim">connecting…</span></header>
+  <div id="log"></div>
+  <script>
+    const log = document.getElementById('log')
+    const summary = document.getElementById('summary')
+    const sessions = {}
+
+    const row = (html) => {
+      const div = document.createElement('div')
+      div.className = 'row'
+      div.innerHTML = html
+      log.prepend(div)
+      while (log.childElementCount > 500) log.lastElementChild.remove()
+    }
+    const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c])
+
+    const source = new EventSource('/api/stream' + location.search)
+    source.addEventListener('snapshot', (m) => {
+      Object.assign(sessions, JSON.parse(m.data).sessions)
+      summary.textContent = `${Object.keys(sessions).length} sessions`
+    })
+    source.addEventListener('event', (m) => {
+      const e = JSON.parse(m.data)
+      const who = `<span class="who">${esc(e.harness)}:${esc(e.agentId.slice(0, 6))}</span>`
+      if (e.kind === 'tool.started') row(`${who} <span class="tool">▸ ${esc(e.title)}</span>`)
+      if (e.kind === 'tool.finished' && !e.ok) row(`${who} <span class="bad">✗ failed</span>`)
+      if (e.kind === 'message') row(`${who} <span class="msg">${esc(e.role)}: ${esc(e.text.slice(0, 200))}</span>`)
+      if (e.kind === 'agent.spawned') row(`${who} <span class="tool">✦ spawned ${esc(e.name)}</span>`)
+      if (e.kind === 'turn.ended') row(`${who} <span class="dim">■ turn ${esc(e.outcome)}</span>`)
+    })
+  </script>
+</body>
+</html>

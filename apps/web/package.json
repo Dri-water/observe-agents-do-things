@@ -1,0 +1,20 @@
+{
+  "name": "@oadt/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "The default observe-agents-do-things frontend: a live constellation of agents, tools and files.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@oadt/client": "0.1.0",
+    "@oadt/protocol": "0.1.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
+  }
+}

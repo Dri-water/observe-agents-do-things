@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="referrer" content="no-referrer" />
+    <title>observe agents do things</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='12' fill='%23ff8a4c'/%3E%3Ccircle cx='12' cy='14' r='5' fill='%233ee0c5'/%3E%3Ccircle cx='52' cy='18' r='5' fill='%235aa9ff'/%3E%3Ccircle cx='48' cy='52' r='5' fill='%23ffd166'/%3E%3Cpath d='M32 32 12 14M32 32l20-14M32 32l16 20' stroke='%23ffffff55' stroke-width='2'/%3E%3C/svg%3E" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <button class="icon-btn menu-btn" id="menu" aria-label="Sessions">☰</button>
+        <div class="brand">
+          <span class="brand-mark"></span>
+          <span class="brand-name">observe<span>·</span>agents<span>·</span>do<span>·</span>things</span>
+        </div>
+        <div class="stats-strip" id="stats"></div>
+        <div class="top-actions">
+          <span class="conn" id="conn" title="Connection">connecting…</span>
+          <button class="icon-btn" id="help-btn" aria-label="Keyboard shortcuts" title="Shortcuts (?)">?</button>
+        </div>
+      </header>
+
+      <aside class="sidebar" id="sidebar">
+        <div class="side-tools">
+          <input id="search" type="search" placeholder="Filter sessions  /" autocomplete="off" spellcheck="false" />
+          <label class="toggle" title="Include sessions idle for over an hour"><input type="checkbox" id="show-idle" /> older</label>
+        </div>
+        <div class="sessions" id="sessions"></div>
+      </aside>
+
+      <main class="stage" id="stage">
+        <canvas id="scene"></canvas>
+        <div class="stage-overlay top-right">
+          <button class="chip-btn" id="fit" title="Fit & follow (F)">⤢ follow</button>
+          <button class="chip-btn" id="labels" title="Toggle tool labels (L)">labels</button>
+        </div>
+        <div class="legend" id="legend"></div>
+        <div class="empty-stage" id="empty-stage" hidden>
+          <div class="empty-orbit"><span></span><span></span><span></span></div>
+          <h2>Waiting for agents</h2>
+          <p>Start a Claude Code or Codex session anywhere on this machine — the CLI, an IDE, or the desktop apps. It will appear here within a second.</p>
+          <p class="muted">Nothing running? Try <code>oadt --demo</code>.</p>
+        </div>
+        <div class="timeline">
+          <div class="timeline-head">
+            <span>Timeline</span>
+            <div class="seg" id="window">
+              <button data-ms="60000">1m</button>
+              <button data-ms="180000" class="on">3m</button>
+              <button data-ms="600000">10m</button>
+              <button data-ms="1800000">30m</button>
+            </div>
+          </div>
+          <canvas id="timeline"></canvas>
+        </div>
+      </main>
+
+      <section class="panel" id="panel">
+        <nav class="tabs" id="tabs">
+          <button data-tab="feed" class="on">Feed</button>
+          <button data-tab="inspect">Inspect</button>
+          <button data-tab="files">Files</button>
+          <button class="pause" id="pause" title="Pause feed (Space)">❚❚</button>
+        </nav>
+        <div class="tab-body" id="feed" data-tab="feed"></div>
+        <div class="tab-body" id="inspector" data-tab="inspect" hidden></div>
+        <div class="tab-body" id="files" data-tab="files" hidden></div>
+      </section>
+    </div>
+
+    <div id="tooltip" class="tooltip" hidden></div>
+    <div id="help" class="help" hidden>
+      <div class="help-card">
+        <h2>Shortcuts</h2>
+        <dl>
+          <dt>A</dt><dd>Follow live activity</dd>
+          <dt>J / K</dt><dd>Next / previous session</dd>
+          <dt>F</dt><dd>Fit and follow the camera</dd>
+          <dt>L</dt><dd>Toggle tool labels</dd>
+          <dt>1 2 3</dt><dd>Feed / Inspect / Files</dd>
+          <dt>Space</dt><dd>Pause the feed</dd>
+          <dt>[ ]</dt><dd>Zoom the timeline</dd>
+          <dt>/</dt><dd>Filter sessions</dd>
+          <dt>Esc</dt><dd>Clear selection</dd>
+        </dl>
+        <p class="muted">Drag to pan, scroll to zoom, click anything to inspect it.</p>
+      </div>
+    </div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
