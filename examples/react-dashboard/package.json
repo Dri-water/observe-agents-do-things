@@ -1,0 +1,23 @@
+{
+  "name": "@oadt/example-react-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A React frontend for observe-agents-do-things built with @oadt/react.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@oadt/react": "0.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "vite": "^6.0.0"
+  }
+}

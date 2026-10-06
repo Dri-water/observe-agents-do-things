@@ -109,6 +109,28 @@ client.onChange((world) => {
 })
 ```
 
+Using React? `@oadt/react` wraps the same client in hooks:
+
+```tsx
+import { ObserverProvider, useSessions, useOpenTools } from '@oadt/react'
+
+function Sessions() {
+  const sessions = useSessions({ liveOnly: true })
+  return sessions.map((s) => <Session key={s.id} id={s.id} title={s.meta.title} />)
+}
+
+function Session({ id, title }: { id: string; title?: string }) {
+  const running = useOpenTools(id)
+  return <p>{title}: {running.map((t) => t.title).join(', ') || 'idle'}</p>
+}
+
+export const App = () => (
+  <ObserverProvider url="http://127.0.0.1:4545">
+    <Sessions />
+  </ObserverProvider>
+)
+```
+
 No build step? The raw stream is plain SSE:
 
 ```js
@@ -124,6 +146,7 @@ Serve any static frontend with `oadt --ui ./my-frontend`. See **[docs/FRONTENDS.
 | Example | What it shows |
 |---|---|
 | [`minimal-feed`](examples/minimal-feed/index.html) | One HTML file, no build, no dependencies |
+| [`react-dashboard`](examples/react-dashboard/src/App.tsx) | A React app built on `@oadt/react` hooks |
 | [`terminal-dashboard`](examples/terminal-dashboard/index.mjs) | A live `top` for agents with `@oadt/client` |
 | [`notify`](examples/notify/index.mjs) | A ping when an agent waits for you or finishes its turn; no UI at all |
 | [`custom-agent`](examples/custom-agent/index.mjs) | Make your own agent observable via `/api/ingest` |
@@ -201,6 +224,7 @@ Transcripts contain your code and your conversations, so `oadt` is careful with 
 | [`@oadt/core`](packages/core) | Tailer, adapters, store, status heuristics, demo and replay sources | protocol |
 | [`@oadt/server`](packages/server) | HTTP + SSE API, the `oadt` CLI | core |
 | [`@oadt/client`](packages/client) | Browser/Node live client with resume | protocol |
+| [`@oadt/react`](packages/react) | React provider and hooks (`useSessions`, `useSession`, `useAgentTree`, `useOpenTools`, `useEvents`…) | client, react (peer) |
 | [`apps/web`](apps/web) | The default constellation frontend | client |
 
 ## Development

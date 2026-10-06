@@ -9,7 +9,7 @@ data, and the core does the hard parts:
 - deciding when an agent is waiting
 - summarising tool calls into titles and categories
 
-There are three ways to plug in, from least to most structured.
+There are four ways to plug in, from least to most structured.
 
 ## 1. Raw SSE (no dependencies)
 
@@ -54,7 +54,36 @@ Behaviour:
   server uses, so `client.world` always equals the server's world.
 - **Draw in `onChange`.** It coalesces bursts, such as a backfill, into one call.
 
-## 3. Embed the core
+## 3. React: `@oadt/react`
+
+A provider plus hooks over the same client. Every hook re-renders when the world changes, at most once per `throttleMs` (default 100 ms).
+
+```tsx
+import { ObserverProvider, useSessions, useSession, useAgentTree, useOpenTools, useEvents, useNow } from '@oadt/react'
+
+<ObserverProvider url="http://127.0.0.1:4545" token={token} throttleMs={100}>
+  <App />
+</ObserverProvider>
+```
+
+| Hook | Returns |
+|---|---|
+| `useSessions({ liveOnly? })` | Sessions ordered waiting → working → recent |
+| `useSession(id)` | One `SessionState` |
+| `useAgentTree(id)` | Nested agents of a session |
+| `useOpenTools(id?)` | Tool calls in flight (one session or all) |
+| `useHotFiles(id, limit?)` | Most-touched files |
+| `useTotals()` | Live/waiting counts, agents, tools, tokens, cost |
+| `useEvents({ session?, limit?, filter?, backfill? })` | Rolling event list, optionally pre-filled with the session's history |
+| `useConnectionStatus()` | `connecting` / `live` / `reconnecting` / `closed` |
+| `useObserver(selector)` | Anything you derive from the world |
+| `useNow(ms)` | A ticking clock for "3s ago" labels |
+
+The world is updated in place, so read state through hooks in the component that renders it, and pass ids, not state objects, into `React.memo` components. [`examples/react-dashboard`](../examples/react-dashboard/src/App.tsx) is a complete app. Run it with `npm run dev --workspace examples/react-dashboard`, or build it and serve it with `oadt --ui examples/react-dashboard/dist`.
+
+![The React dashboard example](images/react-dashboard.png)
+
+## 4. Embed the core
 
 Skip HTTP entirely, for example in an Electron app, a VS Code extension or a
 CLI tool:

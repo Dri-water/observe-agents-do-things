@@ -9,19 +9,22 @@
     "packages/protocol",
     "packages/core",
     "packages/client",
+    "packages/react",
     "packages/server",
-    "apps/web"
+    "apps/web",
+    "examples/react-dashboard"
   ],
   "scripts": {
     "build": "npm run build:packages && npm run build:web",
-    "build:packages": "tsc -b packages/protocol packages/core packages/client packages/server",
+    "build:packages": "tsc -b packages/protocol packages/core packages/client packages/react packages/server",
     "build:web": "npm run build --workspace apps/web && node scripts/copy-ui.mjs",
     "start": "node packages/server/dist/cli.js",
     "demo": "node packages/server/dist/cli.js --demo --open",
     "dev": "node scripts/dev.mjs",
     "test": "npm run build:packages && node scripts/test.mjs",
-    "typecheck": "tsc -b packages/protocol packages/core packages/client packages/server && npm run typecheck --workspace apps/web",
-    "clean": "node scripts/clean.mjs"
+    "typecheck": "tsc -b packages/protocol packages/core packages/client packages/react packages/server && npm run typecheck --workspace apps/web && npm run typecheck --workspace examples/react-dashboard",
+    "clean": "node scripts/clean.mjs",
+    "build:examples": "npm run build --workspace examples/react-dashboard"
   },
   "engines": {
     "node": ">=20.11"
