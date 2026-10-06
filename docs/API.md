@@ -9,7 +9,8 @@ The default address is `http://127.0.0.1:4545`.
   Send it as `Authorization: Bearer <token>`, or as `?token=` for clients such as
   `EventSource` that cannot set headers.
 - The `Host` header must be loopback, the bound address or a LAN address
-  of the machine. Anything else gets `421`, which defeats DNS rebinding.
+  of the machine. Anything else gets `421`, which defeats DNS rebinding. Open the
+  UI by IP (e.g. `http://192.168.1.20:4545`), not by hostname.
 - Cross-origin requests are rejected with `403` unless the origin was allowed
   with `--cors <origin>`. Same-origin pages (anything served by `--ui`) just work.
 
