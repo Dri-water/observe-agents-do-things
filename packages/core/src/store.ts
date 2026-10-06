@@ -21,6 +21,8 @@ export interface StoreOptions {
   maxEvents?: number
   /** Per-session history size (events). */
   maxSessionEvents?: number
+  /** Sessions kept in memory; the least recently active idle ones are dropped beyond this. */
+  maxSessions?: number
   redact?: RedactMode
   limits?: Partial<ProjectionLimits>
 }
@@ -37,12 +39,14 @@ export class EventStore {
   private trimmedSessions = new Set<string>()
   private readonly maxEvents: number
   private readonly maxSessionEvents: number
+  private readonly maxSessions: number
   private readonly redactMode: RedactMode
   readonly limits: ProjectionLimits
 
   constructor(opts: StoreOptions = {}) {
     this.maxEvents = opts.maxEvents ?? 50_000
     this.maxSessionEvents = opts.maxSessionEvents ?? 5_000
+    this.maxSessions = opts.maxSessions ?? 300
     this.redactMode = opts.redact ?? 'none'
     this.limits = { ...DEFAULT_LIMITS, ...opts.limits }
   }
@@ -67,7 +71,10 @@ export class EventStore {
       this.logTrimmed = true
     }
     let list = this.bySession.get(event.sessionId)
-    if (!list) this.bySession.set(event.sessionId, (list = []))
+    if (!list) {
+      this.bySession.set(event.sessionId, (list = []))
+      this.evictSessions()
+    }
     list.push(event)
     if (list.length > this.maxSessionEvents * 1.1) {
       this.bySession.set(event.sessionId, list.slice(-this.maxSessionEvents))
@@ -80,6 +87,21 @@ export class EventStore {
       } catch { /* a broken subscriber must not break ingestion */ }
     }
     return event
+  }
+
+  /** Keep long-running observers bounded: forget the oldest idle sessions. */
+  private evictSessions(): void {
+    const ids = Object.keys(this.world.sessions)
+    if (ids.length <= this.maxSessions) return
+    const idle = ids
+      .map((id) => this.world.sessions[id]!)
+      .filter((s) => s.status === 'idle' || s.status === 'ended')
+      .sort((a, b) => a.lastActivityAt - b.lastActivityAt)
+    for (const s of idle.slice(0, ids.length - this.maxSessions)) {
+      delete this.world.sessions[s.id]
+      this.bySession.delete(s.id)
+      this.trimmedSessions.delete(s.id)
+    }
   }
 
   subscribe(fn: Listener): () => void {

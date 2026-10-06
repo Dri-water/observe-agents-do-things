@@ -1,6 +1,8 @@
 /** Canvas renderer for the constellation. */
 import type { Scene, SNode } from './scene'
-import { alpha, harnessInfo, STATUS_COLOR } from '../../shared/theme'
+import { clip } from '@oadt/protocol'
+import { alpha } from '../../shared/color'
+import { harnessInfo, STATUS_COLOR } from '../../shared/theme'
 
 export interface Camera {
   x: number
@@ -128,7 +130,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, cam: Came
   }
 
   // Nodes: files, tools, then agents on top
-  for (const n of nodes) if (n.kind === 'file') drawFile(ctx, n, t, st, cam)
+  for (const n of nodes) if (n.kind === 'file') drawFile(ctx, n, st, cam)
   const labels: Label[] = []
   for (const n of nodes) if (n.kind === 'tool') drawTool(ctx, n, t, st, cam, labels)
   for (const n of nodes) if (n.kind === 'user') drawUser(ctx, n)
@@ -326,7 +328,7 @@ function drawTool(ctx: CanvasRenderingContext2D, n: SNode, t: number, st: DrawSt
   }
 }
 
-function drawFile(ctx: CanvasRenderingContext2D, n: SNode, t: number, st: DrawState, cam: Camera): void {
+function drawFile(ctx: CanvasRenderingContext2D, n: SNode, st: DrawState, cam: Camera): void {
   const heat = n.lastTs ? Math.exp(-(Date.now() - n.lastTs) / 45_000) : 0
   const r = n.r * (0.3 + 0.7 * n.grow)
   const a = n.alpha
@@ -354,7 +356,6 @@ function drawFile(ctx: CanvasRenderingContext2D, n: SNode, t: number, st: DrawSt
     ctx.fillStyle = alpha('#c9d4e5', (0.4 + 0.6 * Math.max(heat, focus ? 1 : 0)) * a)
     ctx.fillText(clip(n.label, 28), n.x, n.y + r + 6)
   }
-  void t
 }
 
 function drawUser(ctx: CanvasRenderingContext2D, n: SNode): void {
@@ -489,6 +490,3 @@ function curvePoint(x1: number, y1: number, x2: number, y2: number, k: number): 
 const easeOut = (k: number) => 1 - Math.pow(1 - k, 3)
 const easeInOut = (k: number) => (k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2)
 
-export function clip(s: string, n: number): string {
-  return s.length > n ? s.slice(0, n - 1) + '…' : s
-}

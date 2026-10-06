@@ -79,6 +79,7 @@ export class ReplaySource implements Source {
       if (this.stopped) return
       const rewritten = { ...d, ts: Date.now(), sessionId: d.sessionId + suffix } as EventDraft
       if (suffix && rewritten.agentId === d.sessionId) rewritten.agentId = rewritten.sessionId
+      if (suffix && rewritten.kind === 'agent.spawned' && rewritten.parentAgentId === d.sessionId) rewritten.parentAgentId = rewritten.sessionId
       emit(rewritten)
       this.emitted++
     }

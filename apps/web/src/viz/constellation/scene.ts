@@ -136,7 +136,7 @@ export class Scene {
       const s = world.sessions[sid]
       if (s) this.syncSession(s, now)
     }
-    for (const e of events) if (this.anchors.has(e.sessionId)) this.effect(world, e, now)
+    for (const e of events) if (this.anchors.has(e.sessionId)) this.effect(world, e)
   }
 
   private node(id: string, init: () => SNode): SNode {
@@ -295,7 +295,7 @@ export class Scene {
     }
   }
 
-  private effect(world: WorldState, e: ObserverEvent, now: number): void {
+  private effect(world: WorldState, e: ObserverEvent): void {
     const s = world.sessions[e.sessionId]
     if (!s) return
     const key = `${e.seq}`
@@ -402,11 +402,11 @@ export class Scene {
   }
 
   /** Advance physics and effects by `dt` seconds (sub-stepped so slow frames still converge). */
-  step(dt: number, now: number): void {
+  step(dt: number): void {
     dt = Math.min(dt, 0.25)
     const steps = Math.min(8, Math.max(1, Math.ceil(dt / 0.017)))
     for (let i = 0; i < steps; i++) this.physics(dt / steps)
-    this.effects(dt, now)
+    this.effects(dt)
   }
 
   private physics(dt: number): void {
@@ -501,7 +501,7 @@ export class Scene {
 
   }
 
-  private effects(dt: number, now: number): void {
+  private effects(dt: number): void {
     const nodes = [...this.nodes.values()]
     for (const n of nodes) {
       n.alpha += (n.targetAlpha - n.alpha) * Math.min(1, dt * 6)
@@ -514,7 +514,6 @@ export class Scene {
     const t = performance.now()
     this.bubbles = this.bubbles.filter((b) => t - b.born < b.ttl && this.nodes.has(b.nodeId))
     this.rings = this.rings.filter((r) => t - r.born < r.ttl)
-    void now
   }
 
   /** Bounding box of visible nodes, for camera fitting. */

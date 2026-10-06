@@ -36,6 +36,8 @@ export interface ServerHello {
   seq: number
   sources: Array<Record<string, unknown>>
   redact: string
+  /** Whether POST /api/ingest is enabled. */
+  ingest: boolean
 }
 
 type Handlers = {

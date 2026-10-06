@@ -94,5 +94,10 @@ window.addEventListener('keydown', (e) => {
 
 show(params.get('viz') ?? storedViz() ?? VISUALIZATIONS[0]!.id)
 
-// Debug handle for frontend hackers.
-;(window as unknown as { __oadtHost: unknown }).__oadtHost = { client, show, visualizations: VISUALIZATIONS }
+// Debug handle for DevTools: the live client and the mounted visualization.
+;(window as unknown as { __oadt: unknown }).__oadt = {
+  client,
+  show,
+  visualizations: VISUALIZATIONS,
+  get current() { return current?.viz.id },
+}

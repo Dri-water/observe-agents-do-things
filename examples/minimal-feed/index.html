@@ -48,6 +48,10 @@
     })
     source.addEventListener('event', (m) => {
       const e = JSON.parse(m.data)
+      if (!sessions[e.sessionId]) {
+        sessions[e.sessionId] = { id: e.sessionId }
+        summary.textContent = `${Object.keys(sessions).length} sessions`
+      }
       const who = `<span class="who">${esc(e.harness)}:${esc(e.agentId.slice(0, 6))}</span>`
       if (e.kind === 'tool.started') row(`${who} <span class="tool">▸ ${esc(e.title)}</span>`)
       if (e.kind === 'tool.finished' && !e.ok) row(`${who} <span class="bad">✗ failed</span>`)

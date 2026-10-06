@@ -5,7 +5,8 @@ The default address is `http://127.0.0.1:4545`.
 
 ## Authentication & origins
 
-- Loopback binds need no token by default. Non-loopback binds always require one.
+- Loopback binds need no token by default. Non-loopback binds require one unless
+  the server was started with `--no-auth`.
   Send it as `Authorization: Bearer <token>`, or as `?token=` for clients such as
   `EventSource` that cannot set headers.
 - The `Host` header must be loopback, the bound address or a LAN address

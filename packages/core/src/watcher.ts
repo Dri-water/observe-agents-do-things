@@ -29,6 +29,7 @@ interface Tracked {
   busy: boolean
   again: boolean
   lastSize: number
+  lastChange: number
 }
 
 export class TranscriptWatcher {
@@ -86,14 +87,17 @@ export class TranscriptWatcher {
 
   private async touch(path: string): Promise<void> {
     const t = this.files.get(path)
-    if (t) return this.pump(path, t)
+    if (t) {
+      t.lastChange = Date.now()
+      return this.pump(path, t)
+    }
     await this.track(path)
   }
 
   private async track(path: string): Promise<void> {
     if (this.files.has(path) || this.stopped) return
     const parser = this.adapter.createParser(path, this.emit)
-    const tracked: Tracked = { tail: new FileTail(path), parser, busy: true, again: false, lastSize: 0 }
+    const tracked: Tracked = { tail: new FileTail(path), parser, busy: true, again: false, lastSize: 0, lastChange: Date.now() }
     this.files.set(path, tracked)
     try {
       const init = await tracked.tail.init(this.opts.backfillBytes)
@@ -136,11 +140,19 @@ export class TranscriptWatcher {
     if (t.parser.sessionId) this.sessions.add(t.parser.sessionId)
   }
 
+  private polls = 0
+
   private async pollKnown(): Promise<void> {
+    // Files quiet for a while are checked ten times less often (fs.watch still catches them instantly).
+    const full = this.polls++ % 10 === 0
+    const cold = Date.now() - 10 * 60_000
     for (const [path, t] of this.files) {
-      if (t.busy) continue
+      if (t.busy || (!full && t.lastChange < cold)) continue
       const st = await this.safe(() => stat(path), null)
-      if (st && st.size !== t.lastSize) void this.pump(path, t)
+      if (st && st.size !== t.lastSize) {
+        t.lastChange = Date.now()
+        void this.pump(path, t)
+      }
     }
   }
 

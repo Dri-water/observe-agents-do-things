@@ -55,9 +55,14 @@ class Store {
   private last = 0
   private offs: Array<() => void> = []
 
-  constructor(readonly client: ObserverClient, private throttleMs: number) {
-    this.offs.push(client.onChange(() => this.schedule()))
-    this.offs.push(client.on('status', () => this.bump()))
+  constructor(readonly client: ObserverClient, private throttleMs: number) {}
+
+  /** Subscribe to the client. Called from an effect so StrictMode's mount/unmount/mount works. */
+  start(): () => void {
+    this.offs.push(this.client.onChange(() => this.schedule()))
+    this.offs.push(this.client.on('status', () => this.bump()))
+    this.bump()
+    return () => this.stop()
   }
 
   private schedule(): void {
@@ -83,9 +88,10 @@ class Store {
 
   getVersion = (): number => this.version
 
-  dispose(): void {
-    for (const off of this.offs) off()
+  private stop(): void {
+    for (const off of this.offs.splice(0)) off()
     if (this.timer) clearTimeout(this.timer)
+    this.timer = undefined
   }
 }
 
@@ -109,9 +115,10 @@ export function ObserverProvider({ client: external, throttleMs = 100, children,
   const store = useMemo(() => new Store(client, throttleMs), [client, throttleMs])
 
   useEffect(() => {
+    const stop = store.start()
     if (!external) client.connect()
     return () => {
-      store.dispose()
+      stop()
       if (!external) client.close()
     }
   }, [client, store, external])
@@ -138,7 +145,6 @@ export function useObserver<T>(select: (world: WorldState) => T): T {
   const store = useStore()
   const version = useSyncExternalStore(store.subscribe, store.getVersion, store.getVersion)
   // Recompute on every version; the world is mutated in place.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   return useMemo(() => select(store.client.world), [version, select, store])
 }
 

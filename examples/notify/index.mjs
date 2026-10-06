@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 // Get pinged when an agent needs you: it's waiting on a permission prompt,
-// or it finished its turn. Optionally run a command for each notification.
+// or it finished its turn. Optionally run a command for each notification;
+// the text is passed in the OADT_MESSAGE environment variable (never spliced
+// into the command line, so transcript text can't inject shell code).
 //
 //   node examples/notify/index.mjs
-//   node examples/notify/index.mjs --cmd 'notify-send "agents" "{message}"'
+//   node examples/notify/index.mjs --cmd 'notify-send agents "$OADT_MESSAGE"'
 //
 // A "frontend" doesn't have to draw anything.
 import { exec } from 'node:child_process'
@@ -20,7 +22,7 @@ client.on('snapshot', () => { ready = true })
 
 function notify(message) {
   process.stdout.write(`\x07${new Date().toLocaleTimeString()}  ${message}\n`)
-  if (cmd) exec(cmd.replaceAll('{message}', message.replace(/"/g, "'")))
+  if (cmd) exec(cmd, { env: { ...process.env, OADT_MESSAGE: message } })
 }
 
 client.on('event', (e, world) => {

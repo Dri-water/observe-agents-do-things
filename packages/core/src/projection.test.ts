@@ -69,7 +69,7 @@ test('aborted turns close dangling tool calls', () => {
 
 test('tool history is bounded but open calls survive eviction', () => {
   const w = createWorld()
-  const limits = { maxToolsPerSession: 10, maxOutputChars: 100, maxPreviewChars: 100 }
+  const limits = { maxToolsPerSession: 10, maxOutputChars: 100, maxPreviewChars: 100, maxFilesPerSession: 100 }
   applyEvent(w, ev({ kind: 'tool.started', callId: 'open', tool: 'Bash', category: 'shell', title: 'long' }), limits)
   for (let i = 0; i < 50; i++) {
     applyEvent(w, ev({ kind: 'tool.started', callId: `t${i}`, tool: 'Read', category: 'read', title: 'r' }, 1000 + i), limits)
@@ -120,4 +120,16 @@ test('redaction strips content but keeps structure', () => {
   const [st] = strict.sessionEvents('s')
   assert.equal(st!.kind === 'tool.started' && st!.title, 'Read')
   assert.deepEqual(st!.kind === 'tool.started' && st!.files, [])
+})
+
+test('reserved object keys in ids are ignored rather than polluting prototypes', () => {
+  const w = createWorld()
+  applyEvent(w, ev({ kind: 'thinking', agentId: '__proto__' }))
+  applyEvent(w, ev({ kind: 'thinking', sessionId: 'constructor', agentId: 'constructor' }))
+  applyEvent(w, ev({ kind: 'tool.started', callId: 'c', tool: 'Read', category: 'read', title: 'r', files: [{ path: '__proto__', op: 'read' }] }))
+  const probe = {} as Record<string, unknown>
+  assert.equal(probe.thinking, undefined)
+  assert.equal(probe.touches, undefined)
+  assert.equal(Object.hasOwn(w.sessions, 'constructor'), false)
+  assert.equal(Object.keys(w.sessions.s1!.files).length, 0)
 })

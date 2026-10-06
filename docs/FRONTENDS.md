@@ -109,4 +109,4 @@ console.log(sessionList(obs.world))
 - **Privacy.** Respect `hello.redact`. If it is `content`, message texts are
   placeholders such as `[123 chars]`.
 - **Debugging.** In the bundled UI, `window.__oadt` exposes the live client,
-  scene and camera.
+  the mounted visualization's id and `show(id)` to switch visualizations.

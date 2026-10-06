@@ -84,6 +84,27 @@ test('stream resumes from Last-Event-ID without a snapshot', async () => {
   }
 })
 
+test('a Last-Event-ID from before a server restart gets a fresh snapshot', async () => {
+  const { observer, url, close } = await boot()
+  try {
+    observer.ingest({ harness: 'test', sessionId: 's', agentId: 's', ts: 1, kind: 'thinking' })
+    const res = await new Promise<string>((resolve) => {
+      const req = request(url + '/api/stream', { headers: { 'last-event-id': '500' } }, (r) => {
+        let data = ''
+        r.on('data', (c) => {
+          data += c
+          if (data.includes('event: snapshot') || data.includes('event: resumed')) { req.destroy(); resolve(data) }
+        })
+      })
+      req.end()
+    })
+    assert.ok(res.includes('event: snapshot'))
+    assert.ok(!res.includes('event: resumed'))
+  } finally {
+    await close()
+  }
+})
+
 test('rejects DNS-rebinding hosts and foreign origins; allows same origin', async () => {
   const { url, close } = await boot()
   try {
@@ -114,6 +135,7 @@ test('ingest validates drafts and requires JSON', async () => {
     assert.equal((await post({ kind: 'message', sessionId: 'x', role: 'user', text: 'hi' }, 'text/plain')).status, 415)
     assert.equal((await post({ kind: 'nope', sessionId: 'x' })).status, 400)
     assert.equal((await post({ kind: 'tool.started', sessionId: 'x' })).status, 400)
+    assert.equal((await post({ kind: 'message', sessionId: '__proto__', role: 'user', text: 'x' })).status, 400)
     const ok = await post([{ kind: 'message', sessionId: 'x', role: 'assistant', text: 'hello' }])
     assert.equal(ok.status, 202)
     assert.equal(observer.world.sessions.x?.harness, 'custom')

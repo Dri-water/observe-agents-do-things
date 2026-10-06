@@ -214,7 +214,7 @@ export class Office {
         room.chars.set(a.id, c)
         if (room.initialized) this.openDoor(room, now)
       }
-      c.name = isRoot ? (s.meta.title ? 'lead' : 'lead') : a.name
+      c.name = isRoot ? 'lead' : a.name
       c.role = a.role
       // Where should this worker be?
       const want: Dest = isRoot || a.status !== 'done' ? 'desk' : 'couch'

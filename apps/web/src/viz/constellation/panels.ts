@@ -1,6 +1,7 @@
 /** DOM panels: session list, live feed, inspector, files. */
 import {
   agentTree,
+  clip,
   categoryBreakdown,
   contextFill,
   formatAgo,
@@ -388,6 +389,3 @@ export function renderFiles(el: HTMLElement, world: WorldState, sessionIds: stri
   el.replaceChildren(...(rows.length ? rows : [h('div.empty', null, 'No files touched yet.')]))
 }
 
-export function clip(s: string, n: number): string {
-  return s.length > n ? s.slice(0, n - 1) + '…' : s
-}

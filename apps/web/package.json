@@ -2,7 +2,7 @@
   "name": "@oadt/web",
   "version": "0.1.0",
   "private": true,
-  "description": "The default observe-agents-do-things frontend: a live constellation of agents, tools and files.",
+  "description": "The bundled observe-agents-do-things web app: a visualization host with the Constellation and Agent Office views.",
   "license": "MIT",
   "type": "module",
   "scripts": {

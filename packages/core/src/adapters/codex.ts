@@ -17,6 +17,8 @@ import { codexOutputOk, describeCodexTool } from '../tools.js'
 import type { Emit, LineParser, TranscriptAdapter } from './types.js'
 
 const HARNESS = 'codex'
+/** Tool output kept per call (the projection trims further for display). */
+const OUTPUT_MAX = 2000
 const UUID = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi
 
 export interface CodexAdapterOptions {
@@ -312,7 +314,7 @@ export class CodexRolloutParser implements LineParser {
         if (!callId || !this.openCalls.has(callId)) return
         this.openCalls.delete(callId)
         const text = outputText(p.output)
-        this.send(ts, { kind: 'tool.finished', callId, ok: codexOutputOk(text), output: text ? clip(text, 2000) : undefined })
+        this.send(ts, { kind: 'tool.finished', callId, ok: codexOutputOk(text), output: text ? clip(text, OUTPUT_MAX) : undefined })
         return
       }
       case 'web_search_call': {

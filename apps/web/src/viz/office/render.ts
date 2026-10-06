@@ -2,7 +2,10 @@
 import type { SessionState, WorldState } from '@oadt/protocol'
 import { CATEGORY, harnessInfo } from '../../shared/theme'
 import { activityOf, CABINET, COUCH, COUNTER, DOOR, ROOM_D, ROOM_W, SHELF, WINDOWS, type Char, type Effect, type Office, type Room } from './model'
-import { box, clamp, easeInOut, easeOut, floorQuad, iso, mix, poly, roundRect, shade, shadow, withAlpha, wrapText, ZH, type Pt } from './iso'
+import { clip } from '@oadt/protocol'
+import { alpha, mix, shade } from '../../shared/color'
+import { clamp } from '../../shared/dom'
+import { box, easeInOut, easeOut, floorQuad, iso, poly, roundRect, shadow, wrapText, type Pt } from './iso'
 
 const WALL_H = 2.9
 const FONT = 'ui-rounded, "SF Pro Rounded", "Nunito", "Segoe UI", system-ui, sans-serif'
@@ -102,7 +105,7 @@ function drawRoom(ctx: CanvasRenderingContext2D, room: Room, s: SessionState, no
     const agent = occupant ? s.agents[occupant.id] : undefined
     const act = occupant && occupant.mode === 'seated' ? activityOf(s, agent, now) : undefined
     add(d.seat.x + d.seat.y - 0.3, () => drawChair(ctx, d.seat.x, d.seat.y, hc))
-    add(d.x + d.w / 2 + d.y + d.d / 2, () => drawDesk(ctx, d.x, d.y, d.w, d.d, d.boss, act?.activity, now, day, hc, i))
+    add(d.x + d.w / 2 + d.y + d.d / 2, () => drawDesk(ctx, d.x, d.y, d.w, d.d, d.boss, act?.activity, now, hc, i))
   })
   add(COUCH.x + COUCH.w / 2 + COUCH.y + COUCH.d / 2 + 0.3, () => drawCouch(ctx))
   add(CABINET.x + CABINET.y + 0.8, () => drawCabinet(ctx))
@@ -159,8 +162,8 @@ function drawRoom(ctx: CanvasRenderingContext2D, room: Room, s: SessionState, no
     ctx.save()
     ctx.globalCompositeOperation = 'lighter'
     const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 60)
-    g.addColorStop(0, withAlpha(hc, 0.18))
-    g.addColorStop(1, withAlpha(hc, 0))
+    g.addColorStop(0, alpha(hc, 0.18))
+    g.addColorStop(1, alpha(hc, 0))
     ctx.fillStyle = g
     ctx.fillRect(p.x - 60, p.y - 60, 120, 120)
     ctx.restore()
@@ -211,7 +214,7 @@ function drawWalls(ctx: CanvasRenderingContext2D, room: Room, s: SessionState, n
   ctx.stroke()
 
   // Name plaque above the door.
-  onWallX(ctx, dx - 1.6, 0, dh + 0.62, (px) => {
+  onWallX(ctx, dx - 1.6, 0, dh + 0.62, () => {
     const label = clip(room.title, 26)
     ctx.font = `700 11px ${FONT}`
     const tw = Math.max(ctx.measureText(label).width + 26, 70)
@@ -225,7 +228,6 @@ function drawWalls(ctx: CanvasRenderingContext2D, room: Room, s: SessionState, n
     ctx.arc(9, -6, 3, 0, Math.PI * 2)
     ctx.fillStyle = s.status === 'working' ? '#bfffd9' : s.status === 'waiting' ? '#ffe2a8' : '#ffffff88'
     ctx.fill()
-    void px
   })
 
   // Whiteboard on the left wall: the agent's plan.
@@ -303,15 +305,14 @@ function drawWalls(ctx: CanvasRenderingContext2D, room: Room, s: SessionState, n
     ctx.fillText('SHIP', 9, -38)
     ctx.fillText(' IT ✦', 6, -26)
   })
-  void now
 }
 
 /** Draw in a 2D plane aligned with the back wall (along x). Origin at world (x, y, z); +x along the wall, +y down. */
-function onWallX(ctx: CanvasRenderingContext2D, x: number, y: number, z: number, draw: (px: number) => void): void {
+function onWallX(ctx: CanvasRenderingContext2D, x: number, y: number, z: number, draw: () => void): void {
   const p = iso(x, y, z)
   ctx.save()
   ctx.transform(1, 0.5, 0, 1, p.x, p.y)
-  draw(1)
+  draw()
   ctx.restore()
 }
 
@@ -372,7 +373,7 @@ function drawWindow(ctx: CanvasRenderingContext2D, x: number, w: number, now: nu
 
 // ─── Furniture ───────────────────────────────────────────────────────────
 
-function drawDesk(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, d: number, boss: boolean, activity: string | undefined, now: number, day: number, hc: string, idx: number): void {
+function drawDesk(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, d: number, boss: boolean, activity: string | undefined, now: number, hc: string, idx: number): void {
   const wood = boss ? '#d9a877' : '#e8c49a'
   shadow(ctx, x + w / 2, y + d / 2 + 0.1, w * 0.62, 0.16)
   // Legs + modesty panel.
@@ -403,13 +404,12 @@ function drawDesk(ctx: CanvasRenderingContext2D, x: number, y: number, w: number
     box(ctx, lx, y + 0.22, 0.71, 0.6, 0.42, 0.03, '#c7ccd8')
     box(ctx, lx, y + 0.18, 0.74, 0.6, 0.05, 0.38, '#d9dde7')
     const logo = iso(lx + 0.3, y + 0.23, 0.94)
-    ctx.fillStyle = active ? screenColor : withAlpha(hc, 0.6)
+    ctx.fillStyle = active ? screenColor : alpha(hc, 0.6)
     ctx.beginPath(); ctx.arc(logo.x, logo.y, 2.4, 0, Math.PI * 2); ctx.fill()
     glow(ctx, lx + 0.3, y + 0.12, 0.95, active ? screenColor : '#9fd8ff', active ? 0.5 + 0.15 * Math.sin(now / 160 + idx) : 0.12)
     // A paper stack for flavour.
     box(ctx, x + 0.12, y + 0.52, 0.71, 0.32, 0.26, 0.05 + (idx % 3) * 0.03, '#ffffff')
   }
-  void day
 }
 
 /** Screen light spilling toward the worker's face. */
@@ -419,8 +419,8 @@ function glow(ctx: CanvasRenderingContext2D, x: number, y: number, z: number, co
   ctx.save()
   ctx.globalCompositeOperation = 'lighter'
   const g = ctx.createRadialGradient(p.x, p.y, 1, p.x, p.y, 26)
-  g.addColorStop(0, withAlpha(color, a))
-  g.addColorStop(1, withAlpha(color, 0))
+  g.addColorStop(0, alpha(color, a))
+  g.addColorStop(1, alpha(color, 0))
   ctx.fillStyle = g
   ctx.fillRect(p.x - 26, p.y - 26, 52, 52)
   ctx.restore()
@@ -907,7 +907,7 @@ function drawEffect(ctx: CanvasRenderingContext2D, e: Effect, now: number): void
     case 'puff': {
       const p = iso(e.at.x, e.at.y, e.at.z + k * 0.8)
       for (let i = 0; i < 4; i++) {
-        ctx.fillStyle = withAlpha(e.color, (1 - k) * 0.55)
+        ctx.fillStyle = alpha(e.color, (1 - k) * 0.55)
         ctx.beginPath(); ctx.arc(p.x + Math.cos(i * 1.7) * 7 * (1 + k), p.y - i * 3 * k, 5 + k * 6, 0, Math.PI * 2); ctx.fill()
       }
       break
@@ -928,7 +928,7 @@ function drawEffect(ctx: CanvasRenderingContext2D, e: Effect, now: number): void
     }
     case 'ring': {
       const p = iso(e.at.x, e.at.y, 0)
-      ctx.strokeStyle = withAlpha(e.color, 1 - k)
+      ctx.strokeStyle = alpha(e.color, 1 - k)
       ctx.lineWidth = 2.5
       ctx.beginPath(); ctx.ellipse(p.x, p.y, 10 + k * 40, 5 + k * 20, 0, 0, Math.PI * 2); ctx.stroke()
       break
@@ -973,8 +973,3 @@ function drawBackdropDots(ctx: CanvasRenderingContext2D, w: number, h: number, n
   ctx.restore()
 }
 
-export function clip(s: string, n: number): string {
-  return s.length > n ? s.slice(0, Math.max(1, n - 1)) + '…' : s
-}
-
-export { ZH }

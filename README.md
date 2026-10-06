@@ -26,7 +26,7 @@ Agent visualisers tend to *be* the harness, or to install themselves into it. Th
 
 ## Features
 
-- **Swappable visualizations.** Each visualization is a plugin that defines its whole view; the core only provides data. Two ship today, *Constellation* and *Agent Office*, and adding one is a single file.
+- **Swappable visualizations.** Each visualization is a plugin that defines its whole view; the core only provides data. Two ship today, *Constellation* and *Agent Office*. Adding one is a single module plus one line to register it.
 - **Live constellation view.** Agents are glowing nodes. Subagents branch off the tool call that spawned them. Tool calls fly out as color-coded satellites, and the files each agent touches orbit as heat-mapped tiles. Particles show prompts, results and inter-agent messages as they happen.
 - **Subagents in both harnesses.** Claude Code `Agent`/`Task` subagents are linked through their `meta.json` sidecars. Codex `spawn_agent` threads are rebuilt into one tree across separate rollout files.
 - **Knows when you're needed.** Sessions move between *working*, *waiting* and *idle*. *Waiting* means a tool has been pending with no transcript activity, which is almost always a permission prompt. *Idle* means the turn ended.
@@ -37,7 +37,7 @@ Agent visualisers tend to *be* the harness, or to install themselves into it. Th
 - **Replay.** `oadt replay <transcript.jsonl>` replays any recorded session in compressed real time.
 - **Bring your own agent.** `POST /api/ingest` accepts protocol events, so your own agent can show up next to Claude and Codex.
 - **Private by default.** Binds to loopback and rejects foreign `Host` headers (DNS rebinding) and foreign origins. Requires a token when exposed. Optional `--redact content|strict` modes strip text before anything is served.
-- **Tiny.** No runtime dependencies in the core, server or client. The web UI is about 25 KB gzipped (JS and CSS), uses vanilla TypeScript and canvas, and makes no external network requests.
+- **Tiny.** No runtime dependencies in the core, server or client. The web UI, with both visualizations, is about 45 KB gzipped (JS and CSS), uses vanilla TypeScript and canvas, and makes no external network requests.
 
 <table><tr>
 <td width="72%"><img src="docs/images/codex-session.png" alt="A Codex session spawning bench-runner worker threads, with the swimlane timeline below"></td>
@@ -177,6 +177,8 @@ oadt sessions [--json]    list recent sessions and exit
 
   -p, --port <n>          default 4545
       --host <addr>       default 127.0.0.1; a non-loopback host auto-generates a token
+      --token <secret>    require this bearer token
+      --no-auth           no token even on a non-loopback host (e.g. a container published on 127.0.0.1)
       --since <dur>       backfill window: 30m, 6h, 2d (default 6h)
       --harness <list>    claude-code,codex
       --redact <mode>     none | content | strict
@@ -226,9 +228,9 @@ New harnesses are a single adapter. See **[docs/ADAPTERS.md](docs/ADAPTERS.md)**
 Transcripts contain your code and your conversations, so `oadt` is careful with them:
 
 - **Read-only.** It never writes to your agents' directories.
-- **Local by default.** It listens on `127.0.0.1`. With `--host 0.0.0.0` it requires a bearer token, generating one if you don't pass `--token`.
+- **Local by default.** It listens on `127.0.0.1`. With `--host 0.0.0.0` it requires a bearer token, generating one if you don't pass `--token`. Only `--no-auth` turns that off, for setups like the Docker container that publish the port on loopback only.
 - **No cross-site access.** Requests with foreign `Host` headers are rejected (DNS rebinding), and so are cross-origin requests from origins you haven't allowed with `--cors`. `/api/ingest` requires `application/json`, which forces a CORS preflight.
-- **Redaction.** `--redact content` drops prompts, replies, thinking and tool I/O but keeps the flow. `--redact strict` also drops titles, paths and repository details.
+- **Redaction.** `--redact content` drops prompts, replies, thinking, tool I/O, subagent tasks and goals but keeps the flow. `--redact strict` also drops titles, paths and repository details.
 - **No telemetry, no external requests.** The UI uses system fonts and loads nothing from the internet.
 
 ## Packages
@@ -237,10 +239,10 @@ Transcripts contain your code and your conversations, so `oadt` is careful with 
 |---|---|---|
 | [`@oadt/protocol`](packages/protocol) | Event types, `applyEvent` projection, selectors | none |
 | [`@oadt/core`](packages/core) | Tailer, adapters, store, status heuristics, demo and replay sources | protocol |
-| [`@oadt/server`](packages/server) | HTTP + SSE API, the `oadt` CLI | core |
+| [`@oadt/server`](packages/server) | HTTP + SSE API, the `oadt` CLI | core, protocol |
 | [`@oadt/client`](packages/client) | Browser/Node live client with resume | protocol |
 | [`@oadt/react`](packages/react) | React provider and hooks (`useSessions`, `useSession`, `useAgentTree`, `useOpenTools`, `useEvents`…) | client, react (peer) |
-| [`apps/web`](apps/web) | The default constellation frontend | client |
+| [`apps/web`](apps/web) | The bundled web app: a host plus the Constellation and Agent Office visualizations | client |
 
 ## Development
 

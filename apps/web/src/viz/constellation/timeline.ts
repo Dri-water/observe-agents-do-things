@@ -1,6 +1,8 @@
 /** Swimlane timeline: one lane per agent, tool calls as bars, prompts and turn ends as markers. */
-import type { SessionState, ToolCallState, WorldState } from '@oadt/protocol'
-import { alpha, categoryColor, harnessInfo, STATUS_COLOR } from '../../shared/theme'
+import type { ToolCallState, WorldState } from '@oadt/protocol'
+import { clip } from '@oadt/protocol'
+import { alpha } from '../../shared/color'
+import { categoryColor, harnessInfo, STATUS_COLOR } from '../../shared/theme'
 
 export interface Mark {
   sessionId: string
@@ -196,8 +198,4 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath()
 }
 
-function clip(s: string, n: number): string {
-  return s.length > n ? s.slice(0, Math.max(1, n - 1)) + '…' : s
-}
 
-export type { SessionState }

@@ -42,10 +42,3 @@ export const FILE_OP_COLOR = {
   write: '#4fe39b',
   delete: '#ff5d73',
 } as const
-
-/** Hex → rgba with alpha. */
-export function alpha(hex: string, a: number): string {
-  const h = hex.replace('#', '')
-  const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16)
-  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`
-}

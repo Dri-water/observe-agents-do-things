@@ -29,24 +29,25 @@ export function redact(e: EventDraft, mode: RedactMode): EventDraft {
     case 'tool.finished':
       return { ...e, output: undefined }
     case 'agent.spawned':
-      return { ...e, task: strict ? undefined : e.task }
+      // The task is the subagent's prompt.
+      return { ...e, task: undefined }
     case 'session.started':
     case 'session.updated': {
       const meta = { ...e.meta }
       if (meta.titleSource === 'prompt') meta.title = undefined
+      meta.goal = undefined
       if (strict) {
         meta.title = undefined
         meta.cwd = undefined
         meta.transcriptPath = undefined
         meta.gitBranch = undefined
         meta.prUrl = undefined
-        meta.goal = undefined
         if (meta.project) meta.project = basename(meta.project)
       }
       return { ...e, meta }
     }
     case 'note':
-      return strict ? { ...e, text: e.level } : e
+      return { ...e, text: e.level === 'warn' ? 'warning' : 'note' }
     default:
       return e
   }

@@ -46,7 +46,7 @@ Options
       --host <addr>       bind address (default 127.0.0.1). Non-loopback requires a token.
       --token <secret>    require this bearer token (auto-generated for non-loopback hosts)
       --no-auth           never require a token (e.g. in a container published only on 127.0.0.1)
-      --since <dur>       backfill window, e.g. 30m, 6h, 2d (default 6h)
+      --since <dur>       backfill window, e.g. 30m, 6h, 2d (default 6h; 24h for 'sessions')
       --harness <list>    claude-code,codex (default both)
       --demo              simulated sessions instead of real transcripts
       --speed <n>         replay/demo speed multiplier (default 10 for replay, 1 for demo)
@@ -228,7 +228,7 @@ function printEvent(e: ObserverEvent, json?: boolean, only?: string): void {
   if (json) return void process.stdout.write(JSON.stringify(e) + '\n')
   if (e.kind === 'usage' || e.kind === 'session.updated') return
   const time = new Date(e.ts).toLocaleTimeString()
-  const who = `${e.harness === 'codex' ? 'codex' : 'claude'}:${e.sessionId.slice(0, 6)}${e.agentId !== e.sessionId ? '/' + e.agentId.slice(0, 6) : ''}`
+  const who = `${e.harness === 'claude-code' ? 'claude' : e.harness}:${e.sessionId.slice(0, 6)}${e.agentId !== e.sessionId ? '/' + e.agentId.slice(0, 6) : ''}`
   let detail = ''
   switch (e.kind) {
     case 'tool.started': detail = `▶ ${e.title}`; break

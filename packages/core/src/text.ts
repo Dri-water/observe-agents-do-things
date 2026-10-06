@@ -1,8 +1,7 @@
 /** Text helpers shared by the harness adapters. */
+import { clip } from '@oadt/protocol'
 
-export function clip(text: string, max: number): string {
-  return text.length > max ? text.slice(0, max - 1) + '…' : text
-}
+export { clip }
 
 export function firstLine(text: string, max = 120): string {
   const line = text.trim().split(/\r?\n/, 1)[0] ?? ''

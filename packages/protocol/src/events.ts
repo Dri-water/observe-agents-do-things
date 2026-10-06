@@ -159,6 +159,26 @@ type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K>
 /** A normalised event as delivered to frontends. */
 export type ObserverEvent = Distribute<EventBody>
 export type EventKind = ObserverEvent['kind']
+
+/** Every event kind, for validation. */
+export const EVENT_KINDS: readonly EventKind[] = [
+  'session.started', 'session.updated', 'session.status', 'agent.spawned', 'agent.status', 'turn.started',
+  'turn.ended', 'message', 'thinking', 'tool.started', 'tool.finished', 'usage', 'note',
+]
+
+/**
+ * Ids are used as object keys in WorldState. Keys that already exist on
+ * Object.prototype (`__proto__`, `constructor`, `toString`…) would corrupt it,
+ * so events carrying them are dropped by the projection and rejected on ingest.
+ */
+export function isSafeKey(key: unknown): key is string {
+  return typeof key === 'string' && key.length > 0 && !(key in Object.prototype)
+}
+
+/** Shorten text to `max` characters with an ellipsis. */
+export function clip(text: string, max: number): string {
+  return text.length > max ? text.slice(0, Math.max(1, max - 1)) + '…' : text
+}
 export type EventOf<K extends EventKind> = Extract<ObserverEvent, { kind: K }>
 
 /** An event before the observer stamps it with a sequence number. Adapters and `/api/ingest` produce these. */

@@ -13,13 +13,15 @@
  * Security: binds to loopback by default, rejects foreign Host headers (DNS
  * rebinding) and only answers cross-origin requests from an explicit allowlist.
  * Transcripts contain your code and conversations — they never leave the machine
- * unless you deliberately expose the server (and then a token is required).
+ * unless you deliberately expose the server (which requires a token unless you
+ * pass --no-auth, e.g. inside a container published on loopback only).
  */
+import { timingSafeEqual } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { extname, join, normalize, resolve, sep } from 'node:path'
-import { pickSessions, PROTOCOL_VERSION, type EventDraft, type ObserverEvent, type SessionState } from '@oadt/protocol'
+import { EVENT_KINDS, isSafeKey, pickSessions, PROTOCOL_VERSION, type EventDraft, type ObserverEvent, type SessionState } from '@oadt/protocol'
 import type { Observer } from '@oadt/core'
 
 export const VERSION = '0.1.0'
@@ -54,6 +56,10 @@ const MIME: Record<string, string> = {
   '.map': 'application/json',
   '.txt': 'text/plain; charset=utf-8',
 }
+
+const MAX_CLIENTS = 64
+/** Drop a stream client whose unsent buffer grows past this; it will reconnect and resume. */
+const MAX_BUFFERED = 8 * 1024 * 1024
 
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '[::1]', '::1'])
 
@@ -129,8 +135,10 @@ export class ObserverServer {
   private authorized(req: IncomingMessage, url: URL): boolean {
     if (!this.opts.token) return true
     const header = req.headers.authorization
-    if (header === `Bearer ${this.opts.token}`) return true
-    return url.searchParams.get('token') === this.opts.token
+    const given = header?.startsWith('Bearer ') ? header.slice(7) : url.searchParams.get('token') ?? ''
+    const a = Buffer.from(given)
+    const b = Buffer.from(this.opts.token)
+    return a.length === b.length && timingSafeEqual(a, b)
   }
 
   // ─── routing ───────────────────────────────────────────────────────────
@@ -175,8 +183,8 @@ export class ObserverServer {
       return this.json(res, 200, { seq: world.seq, sessions: Object.values(world.sessions).map(summarize) })
     }
     if (path === '/api/events') {
-      const after = Number(url.searchParams.get('after') ?? 0)
-      const limit = Math.min(Number(url.searchParams.get('limit') ?? 5000), 20000)
+      const after = intParam(url, 'after', 0)
+      const limit = Math.min(intParam(url, 'limit', 5000), 20000)
       const events = store.since(after, undefined, limit)
       if (!events) return this.json(res, 410, { error: 'history evicted; fetch /api/state', firstSeq: store.firstSeq })
       return this.json(res, 200, { seq: store.lastSeq, events })
@@ -189,7 +197,7 @@ export class ObserverServer {
       const s = world.sessions[id]
       if (!s) return this.json(res, 404, { error: 'unknown session' })
       if (!m[2]) return this.json(res, 200, s)
-      const after = Number(url.searchParams.get('after') ?? 0)
+      const after = intParam(url, 'after', 0)
       return this.json(res, 200, { seq: store.lastSeq, events: store.since(after, id) ?? store.sessionEvents(id) })
     }
     return this.json(res, 404, { error: 'not found' })
@@ -209,6 +217,7 @@ export class ObserverServer {
   // ─── streaming ─────────────────────────────────────────────────────────
 
   private stream(req: IncomingMessage, res: ServerResponse, url: URL): void {
+    if (this.clients.size >= MAX_CLIENTS) return this.json(res, 503, { error: 'too many stream clients' })
     const session = url.searchParams.get('session') ?? undefined
     res.writeHead(200, {
       'content-type': 'text/event-stream; charset=utf-8',
@@ -223,7 +232,9 @@ export class ObserverServer {
 
     const store = this.observer.store
     const lastId = Number(req.headers['last-event-id'] ?? url.searchParams.get('lastEventId') ?? NaN)
-    const missed = Number.isFinite(lastId) && lastId > 0 ? store.since(lastId, session) : null
+    // Only resume within this server's history; an id from before a restart gets a fresh snapshot.
+    const resumable = Number.isFinite(lastId) && lastId > 0 && lastId <= store.lastSeq
+    const missed = resumable ? store.since(lastId, session) : null
     if (missed) {
       res.write(`event: resumed\ndata: ${JSON.stringify({ from: lastId, count: missed.length })}\n\n`)
       for (const e of missed) res.write(frame(e))
@@ -240,7 +251,13 @@ export class ObserverServer {
     const data = frame(e)
     for (const c of this.clients) {
       const f = (c as ServerResponse & { filter?: (e: ObserverEvent) => boolean }).filter
-      if (!f || f(e)) c.write(data)
+      if (f && !f(e)) continue
+      if (c.writableLength > MAX_BUFFERED) {
+        c.destroy()
+        this.clients.delete(c)
+        continue
+      }
+      c.write(data)
     }
   }
 
@@ -287,7 +304,13 @@ export class ObserverServer {
       return
     }
     const root = resolve(dir)
-    let file = normalize(join(root, decodeURIComponent(path)))
+    let decoded: string
+    try {
+      decoded = decodeURIComponent(path)
+    } catch {
+      return this.json(res, 400, { error: 'bad path' })
+    }
+    let file = normalize(join(root, decoded))
     if (!file.startsWith(root + sep) && file !== root) return this.json(res, 403, { error: 'forbidden' })
     let st = await stat(file).catch(() => null)
     if (st?.isDirectory()) {
@@ -318,21 +341,24 @@ export class ObserverServer {
   }
 }
 
+function intParam(url: URL, name: string, fallback: number): number {
+  const n = Number.parseInt(url.searchParams.get(name) ?? '', 10)
+  return Number.isFinite(n) && n >= 0 ? n : fallback
+}
+
 function frame(e: ObserverEvent): string {
   return `id: ${e.seq}\nevent: event\ndata: ${JSON.stringify(e)}\n\n`
 }
 
-const KINDS = new Set([
-  'session.started', 'session.updated', 'session.status', 'agent.spawned', 'agent.status', 'turn.started',
-  'turn.ended', 'message', 'thinking', 'tool.started', 'tool.finished', 'usage', 'note',
-])
+const KINDS = new Set<string>(EVENT_KINDS)
 
 export function validateDraft(item: unknown): string | undefined {
   if (!item || typeof item !== 'object') return 'event must be an object'
   const d = item as Record<string, unknown>
   if (typeof d.kind !== 'string' || !KINDS.has(d.kind)) return `unknown kind: ${String(d.kind)}`
-  if (typeof d.sessionId !== 'string' || !d.sessionId) return 'sessionId is required'
-  if (d.agentId !== undefined && typeof d.agentId !== 'string') return 'agentId must be a string'
+  if (!isSafeKey(d.sessionId)) return 'sessionId must be a non-empty string that is not a reserved name'
+  if (d.agentId !== undefined && !isSafeKey(d.agentId)) return 'agentId must be a non-empty string that is not a reserved name'
+  if ((d.kind === 'tool.started' || d.kind === 'tool.finished') && !isSafeKey(d.callId)) return 'callId must be a non-empty string that is not a reserved name'
   if (d.kind === 'tool.started' && (typeof d.callId !== 'string' || typeof d.tool !== 'string' || typeof d.title !== 'string' || typeof d.category !== 'string')) {
     return 'tool.started needs callId, tool, title and category'
   }

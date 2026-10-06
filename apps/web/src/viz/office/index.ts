@@ -5,6 +5,7 @@
  */
 import './office.css'
 import {
+  clip,
   formatAgo,
   formatCount,
   formatDuration,
@@ -18,9 +19,10 @@ import {
 import { h, render } from '../../shared/dom'
 import { CATEGORY, harnessInfo } from '../../shared/theme'
 import { Disposer, type Visualization, type VizContext } from '../types'
-import { clamp, iso } from './iso'
+import { clamp } from '../../shared/dom'
+import { iso } from './iso'
 import { activityOf, Office, ROOM_D, ROOM_W } from './model'
-import { attachEffects, clip, daylight, getTimeMode, renderOffice, setTimeMode, type Camera, type TimeMode } from './render'
+import { attachEffects, daylight, getTimeMode, renderOffice, setTimeMode, type Camera, type TimeMode } from './render'
 
 export const office: Visualization = {
   id: 'office',
@@ -72,12 +74,12 @@ function mount(root: HTMLElement, vctx: VizContext) {
   const toolTimes: number[] = []
   const intercom: ObserverEvent[] = []
 
-  d.add(client.onChange((world, events) => {
+  d.add(client.onChange((_world, events) => {
     pending.push(...events)
     dirty = true
     for (const e of events) {
       if (e.kind === 'tool.started') toolTimes.push(Date.now())
-      if (notable(e, world)) intercom.push(e)
+      if (notable(e)) intercom.push(e)
     }
     if (toolTimes.length > 4000) toolTimes.splice(0, 2000)
     if (intercom.length > 60) intercom.splice(0, intercom.length - 40)
@@ -366,16 +368,14 @@ function mount(root: HTMLElement, vctx: VizContext) {
     }
   })
 
-  ;(window as unknown as { __oadtOffice: unknown }).__oadtOffice = { model, cam, ui }
   return { destroy: () => { d.dispose(); root.replaceChildren() } }
 }
 
-function notable(e: ObserverEvent, world: WorldState): boolean {
+function notable(e: ObserverEvent): boolean {
   if (e.kind === 'message') return e.role === 'user' || e.role === 'assistant'
   if (e.kind === 'tool.finished') return !e.ok
   if (e.kind === 'agent.spawned' || e.kind === 'turn.ended') return true
   if (e.kind === 'agent.status') return e.status === 'waiting'
-  void world
   return false
 }
 

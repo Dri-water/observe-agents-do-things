@@ -7,7 +7,9 @@
  * derived state — agent trees, open tool calls, file heat, token totals.
  */
 import {
+  clip,
   emptyUsage,
+  isSafeKey,
   type AgentStatus,
   type FileOp,
   type FileRef,
@@ -132,11 +134,14 @@ export interface ProjectionLimits {
   maxOutputChars: number
   /** Truncate `lastText` / `lastMessage` to this many characters. */
   maxPreviewChars: number
+  /** Keep at most this many files per session (least recently touched are dropped). */
+  maxFilesPerSession: number
 }
 
 export const DEFAULT_LIMITS: ProjectionLimits = {
   maxToolsPerSession: 400,
   maxOutputChars: 1500,
+  maxFilesPerSession: 1000,
   maxPreviewChars: 400,
 }
 
@@ -148,9 +153,8 @@ const TITLE_RANK = { prompt: 1, harness: 2, custom: 3 } as const
 
 const NON_ACTIVITY = new Set(['session.status', 'agent.status', 'session.updated', 'note'])
 
-function clip(text: string | undefined, max: number): string | undefined {
-  if (text === undefined) return undefined
-  return text.length > max ? text.slice(0, max - 1) + '…' : text
+function clipMaybe(text: string | undefined, max: number): string | undefined {
+  return text === undefined ? undefined : clip(text, max)
 }
 
 function ensureSession(world: WorldState, e: ObserverEvent): SessionState {
@@ -237,9 +241,15 @@ function addUsage(target: Usage, delta: Usage): void {
   target.reasoning += delta.reasoning
 }
 
-function touchFile(s: SessionState, ref: FileRef, ts: number, agentId: string): void {
+function touchFile(s: SessionState, ref: FileRef, ts: number, agentId: string, maxFiles: number): void {
   let f = s.files[ref.path]
   if (!f) {
+    const paths = Object.keys(s.files)
+    if (paths.length >= maxFiles) {
+      // Drop the least recently touched tenth to make room.
+      const oldest = paths.sort((x, y) => s.files[x]!.lastTs - s.files[y]!.lastTs).slice(0, Math.ceil(maxFiles / 10))
+      for (const p of oldest) delete s.files[p]
+    }
     f = { path: ref.path, reads: 0, edits: 0, writes: 0, deletes: 0, searches: 0, touches: 0, lastOp: ref.op, lastTs: ts, lastAgentId: agentId }
     s.files[ref.path] = f
   }
@@ -258,7 +268,7 @@ function closeTool(s: SessionState, t: ToolCallState, ok: boolean, ts: number, o
   if (t.endedAt !== undefined) return
   t.endedAt = ts
   t.ok = ok
-  t.output = clip(output, limits.maxOutputChars)
+  t.output = clipMaybe(output, limits.maxOutputChars)
   t.durationMs = durationMs ?? Math.max(0, ts - t.startedAt)
   const owner = s.agents[t.agentId]
   if (owner) {
@@ -291,6 +301,8 @@ function evictTools(s: SessionState, max: number): void {
  */
 export function applyEvent(world: WorldState, e: ObserverEvent, limits: ProjectionLimits = DEFAULT_LIMITS): WorldState {
   if (e.seq > world.seq) world.seq = e.seq
+  if (!isSafeKey(e.sessionId) || !isSafeKey(e.agentId)) return world
+  if ((e.kind === 'tool.started' || e.kind === 'tool.finished') && !isSafeKey(e.callId)) return world
   const s = ensureSession(world, e)
   const a = ensureAgent(s, e.agentId, NON_ACTIVITY.has(e.kind) ? 0 : e.ts)
   const isRoot = a.id === s.rootAgentId
@@ -350,7 +362,7 @@ export function applyEvent(world: WorldState, e: ObserverEvent, limits: Projecti
       if (e.role) a.role = e.role
       if (e.task) a.task = e.task
       if (e.model) a.model = e.model
-      if (e.parentToolCallId) {
+      if (isSafeKey(e.parentToolCallId)) {
         a.parentToolCallId = e.parentToolCallId
         const t = s.tools[e.parentToolCallId]
         if (t) {
@@ -358,7 +370,7 @@ export function applyEvent(world: WorldState, e: ObserverEvent, limits: Projecti
           reparent(s, a, t.agentId)
         }
       }
-      if (e.parentAgentId) reparent(s, a, e.parentAgentId)
+      if (isSafeKey(e.parentAgentId)) reparent(s, a, e.parentAgentId)
       if (e.ts < a.startedAt) a.startedAt = e.ts
       break
     }
@@ -400,7 +412,7 @@ export function applyEvent(world: WorldState, e: ObserverEvent, limits: Projecti
     case 'message': {
       s.counts.messages++
       if (e.role === 'user') s.counts.userMessages++
-      const preview = clip(e.text, limits.maxPreviewChars) ?? ''
+      const preview = clip(e.text, limits.maxPreviewChars)
       s.lastMessage = { role: e.role, text: preview, ts: e.ts, agentId: a.id }
       if (e.role !== 'user') a.lastText = preview
       a.thinking = false
@@ -433,7 +445,7 @@ export function applyEvent(world: WorldState, e: ObserverEvent, limits: Projecti
       a.toolCount++
       s.counts.tools++
       s.byCategory[e.category] = (s.byCategory[e.category] ?? 0) + 1
-      for (const f of t.files) touchFile(s, f, e.ts, a.id)
+      for (const f of t.files) if (isSafeKey(f.path)) touchFile(s, f, e.ts, a.id, limits.maxFilesPerSession)
       // A subagent may have been announced before the call that spawned it.
       for (const other of Object.values(s.agents)) {
         if (other.parentToolCallId === e.callId) {

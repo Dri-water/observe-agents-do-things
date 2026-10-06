@@ -20,7 +20,8 @@ npm run dev        # API (demo data) + Vite UI with hot reload at http://localho
 | Add an event kind or field | `packages/protocol/src/events.ts`, document it in `docs/PROTOCOL.md` |
 | Change status heuristics | `packages/core/src/status.ts` |
 | Add an endpoint | `packages/server/src/server.ts` and `docs/API.md` |
-| Improve the visuals | `apps/web/src/` (scene model in `scene.ts`, drawing in `draw.ts`) |
+| Improve a visualization | `apps/web/src/viz/<name>/` (each visualization is self-contained) |
+| Add a visualization | a new folder under `apps/web/src/viz/`, registered in `viz/index.ts` (see `docs/VISUALIZATIONS.md`) |
 
 The rule of thumb: **if two frontends would both need it, it belongs in the
 core or protocol, not in a frontend.**

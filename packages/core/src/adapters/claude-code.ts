@@ -20,6 +20,8 @@ import type { Emit, LineParser, TranscriptAdapter } from './types.js'
 const HARNESS = 'claude-code'
 const SUBAGENT_FILE = /agent-([A-Za-z0-9_-]+)\.jsonl$/
 const INTERRUPTED = '[Request interrupted by user'
+/** Tool output kept per call (the projection trims further for display). */
+const OUTPUT_MAX = 2000
 
 export interface ClaudeCodeAdapterOptions {
   /** Defaults to $CLAUDE_CONFIG_DIR or ~/.claude */
@@ -129,6 +131,10 @@ export class ClaudeTranscriptParser implements LineParser {
   private titled = false
   private seenTools = new Set<string>()
   private seenRecords = new Set<string>()
+  private metaCache = new Map<string, unknown>()
+  private lastTs: number | undefined
+  /** Set on inline (progress-record) subagents: the Agent call that spawned them. */
+  private inlineParent: string | undefined
   private openTools = new Map<string, string>() // callId → tool name
   private usageByMessage = new Map<string, Usage>()
   private lastModel: string | undefined
@@ -264,9 +270,6 @@ export class ClaudeTranscriptParser implements LineParser {
     this.send(ts, { kind: 'session.updated', meta: changed }, this.sessionId)
   }
 
-  private metaCache = new Map<string, unknown>()
-
-  private lastTs: number | undefined
 
   private ensureStarted(r: Record<string, unknown>, ts: number): void {
     if (r.timestamp === undefined) return
@@ -311,8 +314,6 @@ export class ClaudeTranscriptParser implements LineParser {
     }
   }
 
-  private inlineParent: string | undefined
-
   /** Older Claude Code versions stream subagent activity inline as `progress` records. */
   private progress(r: Record<string, unknown>): void {
     const data = r.data
@@ -347,6 +348,7 @@ export class ClaudeTranscriptParser implements LineParser {
         const name = str(block.name) ?? 'tool'
         if (!id || this.seenTools.has(id)) continue
         this.seenTools.add(id)
+        if (this.seenTools.size > 20000) this.seenTools = new Set([...this.seenTools].slice(-10000))
         const input = isRecord(block.input) ? block.input : {}
         const d = describeClaudeTool(name, input, this.cwd)
         this.openTools.set(id, name)
@@ -432,7 +434,7 @@ export class ClaudeTranscriptParser implements LineParser {
           kind: 'tool.finished',
           callId: id,
           ok: block.is_error !== true && !interrupted,
-          output: text ? clip(text, 2000) : undefined,
+          output: text ? clip(text, OUTPUT_MAX) : undefined,
           durationMs: typeof toolResult?.durationMs === 'number' ? (toolResult.durationMs as number) : undefined,
         })
       } else if (block.type === 'text' && typeof block.text === 'string') {
