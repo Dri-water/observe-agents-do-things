@@ -1,0 +1,17 @@
+# docker compose up -d --build   →   http://127.0.0.1:4545
+#
+# Mounts your Claude Code and Codex transcript folders read-only. Override the
+# locations with CLAUDE_DIR / CODEX_DIR if yours live elsewhere.
+services:
+  observe-agents:
+    build: .
+    image: observe-agents-do-things:latest
+    container_name: observe-agents-do-things
+    restart: unless-stopped
+    ports:
+      # Loopback only: the UI shows your code and conversations.
+      - "127.0.0.1:4545:4545"
+    volumes:
+      - ${CLAUDE_DIR:-${USERPROFILE:-${HOME}}/.claude}:/data/claude:ro
+      - ${CODEX_DIR:-${USERPROFILE:-${HOME}}/.codex}:/data/codex:ro
+    command: ["--host", "0.0.0.0", "--port", "4545", "--no-auth", "--since", "${OADT_SINCE:-12h}"]

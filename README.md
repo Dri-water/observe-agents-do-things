@@ -55,6 +55,14 @@ Then start (or keep using) Claude Code or Codex anywhere on the machine. Nothing
 npm run demo
 ```
 
+### Docker
+
+```bash
+docker compose up -d --build   # container 'observe-agents-do-things', restarts automatically
+```
+
+This mounts `~/.claude` and `~/.codex` read-only, publishes the UI on `127.0.0.1:4545` only, and keeps the last 12 hours of history (`OADT_SINCE`). Inside a container, change detection falls back to polling, because bind mounts don't forward file-change events. Updates still arrive within about a second.
+
 ## How it works
 
 ```mermaid

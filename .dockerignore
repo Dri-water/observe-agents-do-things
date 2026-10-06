@@ -1,0 +1,7 @@
+node_modules
+**/node_modules
+**/dist
+packages/server/ui
+**/*.tsbuildinfo
+.git
+docs/images

@@ -45,6 +45,7 @@ Options
   -p, --port <n>          port (default 4545)
       --host <addr>       bind address (default 127.0.0.1). Non-loopback requires a token.
       --token <secret>    require this bearer token (auto-generated for non-loopback hosts)
+      --no-auth           never require a token (e.g. in a container published only on 127.0.0.1)
       --since <dur>       backfill window, e.g. 30m, 6h, 2d (default 6h)
       --harness <list>    claude-code,codex (default both)
       --demo              simulated sessions instead of real transcripts
@@ -105,6 +106,7 @@ async function main(): Promise<void> {
       port: { type: 'string', short: 'p' },
       host: { type: 'string' },
       token: { type: 'string' },
+      'no-auth': { type: 'boolean' },
       since: { type: 'string' },
       harness: { type: 'string' },
       demo: { type: 'boolean' },
@@ -178,7 +180,7 @@ async function main(): Promise<void> {
 
   const host = values.host ?? '127.0.0.1'
   const loopback = ['127.0.0.1', 'localhost', '::1'].includes(host)
-  const token = values.token ?? (loopback ? undefined : randomBytes(18).toString('base64url'))
+  const token = values.token ?? (loopback || values['no-auth'] ? undefined : randomBytes(18).toString('base64url'))
   const uiDir = values['no-ui'] ? undefined : values.ui ? resolve(values.ui) : defaultUiDir()
 
   const started = Date.now()
@@ -200,7 +202,7 @@ async function main(): Promise<void> {
 
   console.log(`\n  ${bold('observe-agents-do-things')} ${dim(VERSION)}\n`)
   console.log(`  ${color(36, '➜')}  ${bold(withToken)}`)
-  if (!loopback) for (const ip of lanAddresses()) console.log(`  ${color(36, '➜')}  http://${ip}:${new URL(url).port}/?token=${token}`)
+  if (!loopback && token) for (const ip of lanAddresses()) console.log(`  ${color(36, '➜')}  http://${ip}:${new URL(url).port}/?token=${token}`)
   console.log(dim(`     ${observer.describe().map((s) => `${s.name}${s.files !== undefined ? ` (${s.files} files)` : ''}`).join(' · ')}`))
   console.log(dim(`     ${sessions} sessions backfilled in ${Date.now() - started}ms · redact=${redact}${uiDir ? '' : ' · API only'}`))
   if (errors.length) console.log(color(33, `     ${errors.length} read errors (first: ${errors[0]!.slice(0, 120)})`))
