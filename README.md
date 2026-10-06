@@ -10,6 +10,12 @@ Keep using Claude Code and Codex exactly as you do now: the CLI, the IDE extensi
 
 ---
 
+### …or as a cosy isometric office
+
+![Agent Office: each session is a room, each agent a little worker. The lead wears a headset, subagents walk in as new hires, your prompts arrive as paper airplanes](docs/images/office-day.png)
+
+Visualizations are plugins over the same data. Switch with the corner button, the `V` key or `?viz=office`. Each one owns its entire view: layout, rendering, input and HUD. The office maps spawns to new hires walking in, permission prompts to raised hands, file work to papers flying to the filing cabinet, and finished turns to confetti. See **[docs/VISUALIZATIONS.md](docs/VISUALIZATIONS.md)**, including how to write your own.
+
 ## Why
 
 Agent visualisers tend to *be* the harness, or to install themselves into it. This project does neither:
@@ -20,6 +26,7 @@ Agent visualisers tend to *be* the harness, or to install themselves into it. Th
 
 ## Features
 
+- **Swappable visualizations.** Each visualization is a plugin that defines its whole view; the core only provides data. Two ship today, *Constellation* and *Agent Office*, and adding one is a single file.
 - **Live constellation view.** Agents are glowing nodes. Subagents branch off the tool call that spawned them. Tool calls fly out as color-coded satellites, and the files each agent touches orbit as heat-mapped tiles. Particles show prompts, results and inter-agent messages as they happen.
 - **Subagents in both harnesses.** Claude Code `Agent`/`Task` subagents are linked through their `meta.json` sidecars. Codex `spawn_agent` threads are rebuilt into one tree across separate rollout files.
 - **Knows when you're needed.** Sessions move between *working*, *waiting* and *idle*. *Waiting* means a tool has been pending with no transcript activity, which is almost always a permission prompt. *Idle* means the turn ended.

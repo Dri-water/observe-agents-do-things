@@ -1,6 +1,6 @@
 /** Canvas renderer for the constellation. */
 import type { Scene, SNode } from './scene'
-import { alpha, harnessInfo, STATUS_COLOR } from './theme'
+import { alpha, harnessInfo, STATUS_COLOR } from '../../shared/theme'
 
 export interface Camera {
   x: number

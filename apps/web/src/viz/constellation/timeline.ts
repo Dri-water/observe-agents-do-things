@@ -1,6 +1,6 @@
 /** Swimlane timeline: one lane per agent, tool calls as bars, prompts and turn ends as markers. */
 import type { SessionState, ToolCallState, WorldState } from '@oadt/protocol'
-import { alpha, categoryColor, harnessInfo, STATUS_COLOR } from './theme'
+import { alpha, categoryColor, harnessInfo, STATUS_COLOR } from '../../shared/theme'
 
 export interface Mark {
   sessionId: string

@@ -17,8 +17,8 @@ import {
   type SessionState,
   type WorldState,
 } from '@oadt/protocol'
-import { h } from './dom'
-import { CATEGORY, categoryColor, FILE_OP_COLOR, harnessInfo, STATUS_COLOR } from './theme'
+import { h } from '../../shared/dom'
+import { CATEGORY, categoryColor, FILE_OP_COLOR, harnessInfo, STATUS_COLOR } from '../../shared/theme'
 
 export type Selection =
   | { type: 'session'; sessionId: string }

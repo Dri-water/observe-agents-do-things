@@ -4,7 +4,7 @@
  * Pure model — drawing lives in draw.ts.
  */
 import type { AgentStatus, FileOp, ObserverEvent, SessionState, ToolCategory, WorldState } from '@oadt/protocol'
-import { categoryColor, FILE_OP_COLOR, harnessInfo } from './theme'
+import { categoryColor, FILE_OP_COLOR, harnessInfo } from '../../shared/theme'
 
 export type NodeKind = 'agent' | 'tool' | 'file' | 'user'
 

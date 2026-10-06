@@ -1,0 +1,26 @@
+html, body { margin: 0; height: 100%; background: #05070d; overflow: hidden; }
+#viz-root, .viz { position: fixed; inset: 0; }
+
+.viz-switcher { position: relative; font: 12.5px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; z-index: 50; }
+.viz-switcher.floating { position: fixed; left: 14px; bottom: 14px; }
+.viz-switcher-button {
+  display: inline-flex; align-items: center; gap: 7px; cursor: pointer;
+  padding: 5px 11px; border-radius: 999px; border: 1px solid #2c3954;
+  background: #0d1424e6; color: #dfe7f3; font: inherit; backdrop-filter: blur(8px);
+}
+.viz-switcher-button:hover { border-color: #4a6290; }
+.viz-switcher-icon { color: #ffb547; }
+.viz-switcher-caret { opacity: .6; font-size: 10px; }
+.viz-switcher-menu {
+  position: absolute; top: calc(100% + 6px); right: 0; min-width: 300px; padding: 6px;
+  background: #0d1424f7; border: 1px solid #2c3954; border-radius: 12px; box-shadow: 0 14px 40px #000a;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.viz-switcher.floating .viz-switcher-menu { top: auto; bottom: calc(100% + 6px); left: 0; right: auto; }
+.viz-switcher-item {
+  text-align: left; padding: 8px 10px; border-radius: 8px; border: 0; background: none; color: #dfe7f3;
+  font: inherit; cursor: pointer; display: flex; flex-direction: column; gap: 2px;
+}
+.viz-switcher-item:hover { background: #ffffff0d; }
+.viz-switcher-item.on { background: #ffb5471a; box-shadow: inset 2px 0 0 #ffb547; }
+.viz-switcher-item span { color: #8b98ad; font-size: 11.5px; }
