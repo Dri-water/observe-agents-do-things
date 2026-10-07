@@ -33,11 +33,14 @@ Built for daily use on a second monitor:
 
 - **Needs attention.** Approvals waiting (with a live timer), finished turns ready for review, failure streaks, context almost full, and tools that have run unusually long. Acknowledge items one by one, or clear them all with `X`.
 - **Notifications.** Off by default. Turn on desktop notifications, a chime and the tab-title count on the settings page, and choose which kinds alert you. They work in every visualization, not just this one.
-- **Live overview.** KPIs (live sessions, working agents, tools/min, tokens/min, recent errors), a stacked throughput chart by tool kind, and compact session tiles. Each tile shows what the session is doing right now with a ticking timer, plus a sparkline and a context gauge.
-- **Detail panel.** Per-session Activity (every tool call; click one for its input and output), Chat (prompts and replies), Agents (the tree, each agent's current tool and how long it has been waiting) and Files.
+- **Live overview.** KPIs (live sessions, working agents, tools/min, tokens/min, recent errors), a smoothly scrolling throughput chart by tool kind, and compact session tiles. Each tile shows what the session is doing right now with a ticking timer, a heartbeat line that spikes on every tool call, and a context gauge.
+- **Live diffs.** Edits stream in as coloured diffs the moment an agent makes them (Claude Code's Edit, MultiEdit and Write, Codex's apply_patch), next to a running feed of every tool call. Expand a diff for the full change.
+- **Session drawer.** Open a session (click a tile, or `Enter`) to slide in its Activity (every tool call with input and output), Diffs, Chat, Agents (the tree and what each is waiting on) and Files. Pin it in Settings to keep it docked instead.
 - **Themes.** Dark Modern, Light Modern, Gruvbox Dark and Gruvbox Light, or follow the system.
 
-Keys: `/` filter, `J`/`K` move between sessions, `1`–`4` detail tabs, `X` acknowledge all.
+Keys: `/` filter, `J`/`K` move between sessions, `Enter` open, `Esc` close, `1`–`5` drawer tabs, `X` acknowledge all.
+
+Everything animates in and out (new rows, diffs, tiles, counters) and respects `prefers-reduced-motion`.
 
 ### Agent Office
 
