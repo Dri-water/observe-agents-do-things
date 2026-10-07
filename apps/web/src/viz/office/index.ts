@@ -38,6 +38,7 @@ export const office: Visualization = {
   icon: '⌂',
   settings: [
     { key: 'labels', label: 'Name tags', type: 'toggle', default: true, description: 'Show name tags under the blobs. Shortcut: L.' },
+    { key: 'sidebar', label: 'Front desk sidebar', type: 'toggle', default: true, description: 'Attention queue, filed diffs and intercom in a sidebar next to the office. Shortcut: D.' },
     {
       key: 'lighting', label: 'Lighting', type: 'select', default: 'auto',
       description: 'Day and night follow your clock in auto mode. You can also click the clock in the office.',
@@ -51,31 +52,35 @@ const ATTN_ICON: Record<AttentionItem['kind'], string> = { waiting: '⏸', error
 
 const TEMPLATE = `
 <div class="of">
-  <canvas class="of-canvas"></canvas>
-  <header class="of-top">
-    <div class="of-brand"><span class="of-logo"><i></i><i></i><i></i></span><b>Agent Office</b><span class="of-clock"></span></div>
-    <div class="of-stats"></div>
-    <div class="of-actions">
-      <button class="of-btn of-bell" title="Desktop notifications"></button>
-      <button class="of-btn of-labels" title="Name tags (L)">name tags</button>
-      <button class="of-btn of-fit" title="Fit view (F)">⤢ fit</button>
+  <div class="of-stage">
+    <canvas class="of-canvas"></canvas>
+    <header class="of-top">
+      <div class="of-brand"><span class="of-logo"><i></i><i></i><i></i></span><b>Agent Office</b><span class="of-clock"></span></div>
+      <div class="of-stats"></div>
+      <div class="of-actions">
+        <button class="of-btn of-bell" title="Desktop notifications"></button>
+        <button class="of-btn of-labels" title="Name tags (L)">name tags</button>
+        <button class="of-btn of-sidebar" title="Front desk sidebar (D)">front desk</button>
+        <button class="of-btn of-fit" title="Fit view (F)">⤢ fit</button>
+      </div>
+    </header>
+    <nav class="of-rooms"></nav>
+    <div class="of-card" hidden></div>
+    <div class="of-empty" hidden>
+      <div class="of-empty-art">☕</div>
+      <h2>The office is quiet</h2>
+      <p>Start a Claude Code or Codex session and your agents will clock in here.</p>
     </div>
-  </header>
-  <nav class="of-rooms"></nav>
+  </div>
   <aside class="of-desk">
     <div class="of-desk-title"><span class="of-dot"></span>Front desk<span class="of-grow"></span><button class="of-clear" hidden title="Acknowledge everything (X)">clear all</button></div>
     <div class="of-attn"></div>
     <div class="of-allclear">✓ Nothing needs you</div>
     <div class="of-desk-sub" hidden>Filed diffs</div>
     <div class="of-diffs"></div>
+    <div class="of-desk-sub">Intercom</div>
     <ol class="of-feed"></ol>
   </aside>
-  <div class="of-card" hidden></div>
-  <div class="of-empty" hidden>
-    <div class="of-empty-art">☕</div>
-    <h2>The office is quiet</h2>
-    <p>Start a Claude Code or Codex session and your agents will clock in here.</p>
-  </div>
 </div>`
 
 function mount(root: HTMLElement, vctx: VizContext) {
@@ -98,6 +103,17 @@ function mount(root: HTMLElement, vctx: VizContext) {
   }
   ui.labels = settings.get<boolean>('office.labels')
   d.add(settings.on('office.labels', (v) => { ui.labels = v === true }))
+  const of = q('.of')
+  const stage = q('.of-stage')
+  const sidebarBtn = q('.of-sidebar')
+  function applySidebar(): void {
+    const on = settings.get<boolean>('office.sidebar')
+    of.classList.toggle('no-desk', !on)
+    sidebarBtn.classList.toggle('on', on)
+  }
+  applySidebar()
+  d.add(settings.on('office.sidebar', applySidebar))
+  d.listen(sidebarBtn, 'click', () => settings.set('office.sidebar', !settings.get<boolean>('office.sidebar')))
 
   let pending: ObserverEvent[] = []
   let dirty = true
@@ -142,10 +158,8 @@ function mount(root: HTMLElement, vctx: VizContext) {
     if (!b) return
     const w = canvas.clientWidth, hh = canvas.clientHeight
     const padTop = 80, padBottom = w < 760 ? 60 : 70
-    // Leave the front desk panel's column free when there is room for it.
-    const padRight = w >= 1100 && q('.of-desk').offsetParent ? 380 : 0
-    const zoom = clamp(Math.min((w - 40 - padRight) / (b.maxX - b.minX), (hh - padTop - padBottom) / (b.maxY - b.minY)), 0.35, 2.4)
-    const cx = (b.minX + b.maxX) / 2 + padRight / 2 / zoom
+    const zoom = clamp(Math.min((w - 40) / (b.maxX - b.minX), (hh - padTop - padBottom) / (b.maxY - b.minY)), 0.35, 2.4)
+    const cx = (b.minX + b.maxX) / 2
     const cy = (b.minY + b.maxY) / 2 - (padTop - padBottom) / 2 / zoom
     const k = Math.min(1, dt * 3)
     cam.zoom += (zoom - cam.zoom) * k
@@ -247,6 +261,7 @@ function mount(root: HTMLElement, vctx: VizContext) {
       case 'l': case 'L': toggleLabels(); break
       case 'a': case 'A': setView('auto'); break
       case 'x': case 'X': attention.ackAll(); break
+      case 'd': case 'D': settings.set('office.sidebar', !settings.get<boolean>('office.sidebar')); break
       case 'j': case 'k': case 'J': case 'K': {
         const choices = roomChoices()
         const i = Math.max(0, choices.indexOf(ui.view))
@@ -306,8 +321,8 @@ function mount(root: HTMLElement, vctx: VizContext) {
     h('span.of-sticky.pink', null, stats.tokens, 'tokens'),
   )
   const needsSticky = stats.needs.parentElement as HTMLElement
-  needsSticky.title = 'Open the front desk list'
-  d.listen(needsSticky, 'click', () => q('.of-desk').scrollIntoView({ behavior: 'smooth' }))
+  needsSticky.title = 'Show the front desk'
+  d.listen(needsSticky, 'click', () => { settings.set('office.sidebar', true); q('.of-desk').scrollTo({ top: 0, behavior: 'smooth' }) })
 
   function renderTop(now: number): void {
     const world = client.world
@@ -416,10 +431,10 @@ function mount(root: HTMLElement, vctx: VizContext) {
     q('.of-clear').hidden = open.length === 0
     const changes = recentChanges(client.world, 20, model.rooms.keys())
       .filter((c) => c.tool.endedAt !== undefined && (model.filedAt.get(c.key) ?? 0) <= now)
-      .slice(0, 4)
+      .slice(0, 8)
     q('.of-desk-sub').hidden = changes.length === 0
     diffs.sync(changes)
-    feed.sync(intercom.filter((e) => model.rooms.has(e.sessionId)).slice(-6).reverse())
+    feed.sync(intercom.filter((e) => model.rooms.has(e.sessionId)).slice(-10).reverse())
   }
   d.add(attention.subscribe(() => { renderDesk(); renderRooms() }))
 
@@ -512,16 +527,19 @@ function mount(root: HTMLElement, vctx: VizContext) {
 
     const dpr = window.devicePixelRatio || 1
     const w = canvas.clientWidth, hh = canvas.clientHeight
+    // The stage shrinks when the sidebar is open: compact the HUD before it wraps.
+    stage.classList.toggle('narrow', w < 1040)
+    stage.classList.toggle('tiny', w < 720)
     if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(hh * dpr)) {
       canvas.width = Math.round(w * dpr)
       canvas.height = Math.round(hh * dpr)
     }
     if (ui.autoFit) fit(dt)
-    // Filed diffs fly to the front desk panel (or the corner when it is hidden on small screens).
-    const deskEl = q('.of-desk')
-    const dr = deskEl.offsetParent ? deskEl.getBoundingClientRect() : undefined
+    // Filed diffs fly to the sidebar's diff list (or off the right edge when the sidebar is hidden).
+    const diffsEl = q('.of-diffs')
+    const dr = diffsEl.offsetParent ? diffsEl.getBoundingClientRect() : undefined
     const cr = canvas.getBoundingClientRect()
-    const tx = dr ? dr.left - cr.left + 28 : w - 30, ty = dr ? dr.top - cr.top + 40 : hh - 30
+    const tx = dr ? dr.left - cr.left + 30 : w + 40, ty = dr ? clamp(dr.top - cr.top + 24, 60, hh - 40) : hh / 2
     const fileTarget = { x: (tx - w / 2) / cam.zoom + cam.x, y: (ty - hh / 2) / cam.zoom + cam.y }
     renderOffice(ctx, model, world, cam, w, hh, dpr, now, { hovered: ui.hovered, selected: ui.selected?.char, labels: ui.labels, fileTarget })
     labelsBtn.classList.toggle('on', ui.labels)

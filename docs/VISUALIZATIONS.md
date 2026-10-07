@@ -87,10 +87,11 @@ meet it; the expression and body motion follow the shared activity model.
 Click any blob for its profile card: mood, role, model, current task, recent
 tools and the files it just changed, and for the lead the session's turns,
 cost and context fill. Drag to pan and scroll to zoom. `F` fits the view, `L`
-toggles name tags, `A` follows all live rooms, `J`/`K` step through rooms and
-`X` acknowledges everything.
+toggles name tags, `D` toggles the front desk sidebar, `A` follows all live
+rooms, `J`/`K` step through rooms and `X` acknowledges everything.
 
-The **front desk** panel shares Mission Control's attention queue: approvals,
+The **front desk** sidebar (toggle with `D` or the top-bar button; it never
+covers the office) shares Mission Control's attention queue: approvals,
 finished turns, failure streaks, nearly full context and long-running tools,
 each with a ✓ to acknowledge. Click an item to jump to that room and agent.
 Under it, **Filed diffs** holds the latest changes from the rooms on screen,
