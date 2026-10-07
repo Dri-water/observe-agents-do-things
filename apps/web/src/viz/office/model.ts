@@ -37,7 +37,7 @@ export const SIDE_TABLE = { x: 7.55, y: 8.4 }
 export const FLOOR_LAMP = { x: 7.45, y: 7.75 }
 export const DOORMAT = { x: 9.5, y: 0.1, w: 1.45, d: 0.62 }
 export const SHELF = { x: 6.0, y: 0.05, w: 1.6, d: 0.5, h: 1.9 }
-const COUCH_SPOTS: Pt[] = [{ x: 8.85, y: 8.5 }, { x: 9.65, y: 8.5 }, { x: 10.45, y: 8.5 }]
+const COUCH_SPOTS: Pt[] = [{ x: 8.62, y: 8.52 }, { x: 9.65, y: 8.52 }, { x: 10.68, y: 8.52 }]
 const STAND_SPOTS: Pt[] = [{ x: 1.45, y: 6.7 }, { x: 1.5, y: 7.5 }, { x: 1.45, y: 8.3 }, { x: 4.6, y: 8.4 }, { x: 6.2, y: 8.4 }]
 
 function deskLayout(): Desk[] {

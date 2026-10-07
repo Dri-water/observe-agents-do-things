@@ -65,7 +65,7 @@ export function daylight(date = new Date()): number {
 
 /** Seat height of the worker depending on where they sit (shared with picking). */
 export function seatZ(mode: Char['mode']): number {
-  return mode === 'seated' ? 0.46 : mode === 'lounging' ? 0.44 : 0
+  return mode === 'seated' ? 0.46 : mode === 'lounging' ? 0.47 : 0
 }
 
 export function renderOffice(
@@ -862,28 +862,40 @@ function drawChair(ctx: CanvasRenderingContext2D, sx: number, sy: number, hc: st
     ctx.beginPath(); ctx.ellipse(e.x, e.y + 1, 2.2, 1.4, 0, 0, Math.PI * 2); ctx.fill()
   }
   cyl(ctx, sx, sy, 0.03, 0.045, 0.32, metal)
-  box(ctx, sx - 0.26, sy - 0.24, 0.33, 0.52, 0.5, 0.1, fabric, { top: shade(fabric, 0.16) })
-  box(ctx, sx - 0.24, sy - 0.33, 0.43, 0.48, 0.1, 0.62, fabric, { top: shade(fabric, 0.14) })
-  box(ctx, sx - 0.32, sy - 0.1, 0.43, 0.06, 0.28, 0.2, '#4b4f63', { edge: false })
-  box(ctx, sx + 0.26, sy - 0.1, 0.43, 0.06, 0.28, 0.2, '#4b4f63', { edge: false })
+  box(ctx, sx - 0.26, sy - 0.24, 0.33, 0.52, 0.5, 0.12, fabric, { top: shade(fabric, 0.18) })
+  // Backrest: a slim frame with a padded, lighter upper half.
+  box(ctx, sx - 0.24, sy - 0.33, 0.45, 0.48, 0.09, 0.3, shade(fabric, -0.08), { top: shade(fabric, 0.05) })
+  box(ctx, sx - 0.25, sy - 0.35, 0.75, 0.5, 0.11, 0.34, fabric, { top: shade(fabric, 0.2) })
 }
 
+const SOFA = '#7d8fd6'
+
+/** Base, back, back cushions and the far arm: everything a lounger sits in front of. */
 function drawCouchBack(ctx: CanvasRenderingContext2D): void {
   const { x, y, w, d } = COUCH
-  const c = '#7f8fd8'
-  box(ctx, x, y, 0, w, d, 0.3, shade(c, -0.08))
-  box(ctx, x, y, 0.3, w, 0.26, 0.6, c, { top: shade(c, 0.14) })
-  for (let i = 0; i < 3; i++) box(ctx, x + 0.06 + i * (w / 3), y + 0.02, 0.33, w / 3 - 0.12, 0.26, 0.5, shade(c, 0.05), { top: shade(c, 0.2) })
-  box(ctx, x - 0.2, y, 0, 0.2, d, 0.62, shade(c, -0.02), { top: shade(c, 0.12) })
-  box(ctx, x + w, y, 0, 0.2, d, 0.62, shade(c, -0.02), { top: shade(c, 0.12) })
-  // Throw pillow.
-  box(ctx, x + 0.16, y + 0.3, 0.42, 0.36, 0.14, 0.34, '#f6bd60', { top: '#ffd68a' })
+  const c = SOFA
+  box(ctx, x, y, 0, w, d, 0.42, shade(c, -0.1))
+  box(ctx, x, y, 0.42, w, 0.3, 0.56, c, { top: shade(c, 0.16) })
+  for (let i = 0; i < 3; i++) {
+    const cx = x + 0.07 + i * (w / 3), cw = w / 3 - 0.14
+    box(ctx, cx, y + 0.3, 0.46, cw, 0.14, 0.44, shade(c, 0.05), { top: shade(c, 0.24) })
+    // A soft crease across the middle of each back cushion.
+    line(ctx, iso(cx + 0.05, y + 0.44, 0.68), iso(cx + cw - 0.05, y + 0.44, 0.68), 'rgba(0,0,0,0.08)', 1)
+  }
+  box(ctx, x - 0.26, y, 0, 0.26, d, 0.7, shade(c, -0.02), { top: shade(c, 0.14) })
+  // Throw pillow leaning on the far cushion.
+  box(ctx, x + 0.14, y + 0.44, 0.54, 0.34, 0.1, 0.32, '#f6bd60', { top: '#ffd68a' })
 }
 
+/** Seat cushions and the near arm, drawn after the loungers so they sink into the seat. */
 function drawCouchFront(ctx: CanvasRenderingContext2D): void {
   const { x, y, w, d } = COUCH
-  const c = '#7f8fd8'
-  for (let i = 0; i < 3; i++) box(ctx, x + 0.04 + i * (w / 3), y + 0.26, 0.3, w / 3 - 0.08, d - 0.26, 0.14, shade(c, 0.06), { top: shade(c, 0.22) })
+  const c = SOFA
+  for (let i = 0; i < 3; i++) {
+    const cx = x + 0.04 + i * (w / 3), cw = w / 3 - 0.08
+    box(ctx, cx, y + 0.32, 0.42, cw, d - 0.36, 0.12, shade(c, 0.02), { top: shade(c, 0.2) })
+  }
+  box(ctx, x + w, y, 0, 0.26, d, 0.7, shade(c, -0.02), { top: shade(c, 0.14) })
 }
 
 function drawSideTable(ctx: CanvasRenderingContext2D): void {
@@ -1147,7 +1159,8 @@ function drawWorker(ctx: CanvasRenderingContext2D, c: Char, activity: Activity, 
   if (seated || lounging) { m.dy = Math.max(m.dy * 0.4, -5); m.rot *= 0.6; m.dx *= 0.5 }
   const blink = now >= c.blinkAt && now < c.blinkAt + 140 ? 0.08 : activity === 'sleeping' ? 0.12 : 1
   drawBlob(ctx, art, foot.x, foot.y, {
-    size: BLOB, facing: c.facing, eyes: blink, sx: m.sx, sy: m.sy, rot: m.rot, dx: m.dx, dyExtra: m.dy,
+    // Loungers are drawn a touch smaller so three of them fit the sofa without hiding each other's faces.
+    size: lounging ? BLOB * 0.82 : BLOB, facing: c.facing, eyes: blink, sx: m.sx, sy: m.sy, rot: m.rot, dx: m.dx, dyExtra: m.dy,
     headset: c.isRoot, dim: activity === 'sleeping' ? 1 : activity === 'idle' ? 0.3 : 0,
     // The night wash multiplies everything afterwards; blobs are pre-lit so faces stay readable.
     lift: 1 - day,
@@ -1164,7 +1177,7 @@ function drawWorker(ctx: CanvasRenderingContext2D, c: Char, activity: Activity, 
   }
   ctx.restore()
 
-  const s = BLOB / 100
+  const s = (lounging ? BLOB * 0.82 : BLOB) / 100
   const top = foot.y - (art.bottom - (art.frame.cy - art.frame.ry) - art.dy - m.dy) * s * m.sy
   return { head: { x: foot.x + m.dx * s, y: top }, foot: { x: foot.x, y: foot.y + (lounging ? 6 : seated ? 3 : 0) }, hip: { x: foot.x, y: foot.y - 10 } }
 }
