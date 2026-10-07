@@ -6,8 +6,9 @@
  *
  * Everything here is derived from `WorldState` + `ObserverEvent`s; no harness knowledge.
  */
-import type { AgentState, ObserverEvent, SessionState, ToolCategory, ToolCallState, WorldState } from '@oadt/protocol'
-import { hash, type Pt } from './iso'
+import { agentActivity, type Activity, type AgentState, type FileChange, type ObserverEvent, type SessionState, type ToolCallState, type WorldState } from '@oadt/protocol'
+import { buddySeed } from '../../shared/buddy'
+import type { Pt } from './iso'
 
 export const ROOM_W = 12
 export const ROOM_D = 9
@@ -31,9 +32,12 @@ export const DOOR = { x: 9.6, w: 1.25, h: 2.05 }
 export const WINDOWS = [{ x: 1.0, w: 1.9 }, { x: 3.4, w: 1.9 }]
 export const CABINET = { x: 0.05, y: 4.55, w: 0.75, d: 0.75, h: 1.25 }
 export const COUNTER = { x: 0.05, y: 6.3, w: 0.85, d: 2.3, h: 0.95 }
-export const COUCH = { x: 8.4, y: 8.05, w: 2.6, d: 0.85 }
+export const COUCH = { x: 8.3, y: 7.9, w: 2.7, d: 1.0 }
+export const SIDE_TABLE = { x: 7.55, y: 8.4 }
+export const FLOOR_LAMP = { x: 7.45, y: 7.75 }
+export const DOORMAT = { x: 9.5, y: 0.1, w: 1.45, d: 0.62 }
 export const SHELF = { x: 6.0, y: 0.05, w: 1.6, d: 0.5, h: 1.9 }
-const COUCH_SPOTS: Pt[] = [{ x: 8.95, y: 8.35 }, { x: 9.7, y: 8.35 }, { x: 10.45, y: 8.35 }]
+const COUCH_SPOTS: Pt[] = [{ x: 8.85, y: 8.5 }, { x: 9.65, y: 8.5 }, { x: 10.45, y: 8.5 }]
 const STAND_SPOTS: Pt[] = [{ x: 1.45, y: 6.7 }, { x: 1.5, y: 7.5 }, { x: 1.45, y: 8.3 }, { x: 4.6, y: 8.4 }, { x: 6.2, y: 8.4 }]
 
 function deskLayout(): Desk[] {
@@ -46,8 +50,6 @@ function deskLayout(): Desk[] {
 
 export type Mode = 'walking' | 'seated' | 'lounging' | 'standing'
 export type Dest = 'desk' | 'couch' | 'stand' | 'door'
-
-export interface Palette { shirt: string; hair: string; skin: string; accent: string; hairStyle: number }
 
 export interface Bubble { text: string; tone: 'say' | 'task' | 'user'; born: number; ttl: number }
 
@@ -64,7 +66,8 @@ export interface Char {
   dest: Dest
   deskIdx: number
   spotIdx: number
-  palette: Palette
+  /** The blob's seed: the session id for the lead, so a session keeps its face across visualizations. */
+  seed: string
   facing: 1 | -1
   phase: number
   jumpUntil: number
@@ -89,6 +92,8 @@ export interface Room {
   plan?: { done: number; total: number; label: string }
   cat: Cat
   initialized: boolean
+  /** When the room first appeared (for the pop-in animation). */
+  bornAt: number
   /** Workers who already went home (only come back if they get work again). */
   gone: Set<string>
 }
@@ -101,54 +106,34 @@ export type Effect =
   | { kind: 'ring'; room: string; at: Pt3; born: number; dur: number; color: string }
   | { kind: 'phone'; room: string; at: Pt3; born: number; dur: number }
   | { kind: 'confetti'; room: string; at: Pt3; born: number; dur: number; bits: Array<{ vx: number; vy: number; vz: number; color: string; spin: number }> }
+  /** A diff typed out above the agent's head, then filed to the front desk. */
+  | { kind: 'diff'; room: string; agentId: string; at: Pt3; born: number; dur: number; typeMs: number; holdMs: number; key: string; path: string; op: FileChange['op']; added: number; removed: number; lines: string[]; chars: number }
 
 export interface Pt3 { x: number; y: number; z: number }
 
-const SKIN = ['#ffd9c2', '#f6c7a8', '#e8b18e', '#c98d6b', '#a8704f', '#ffe3cf']
-const HAIR = ['#3b2a26', '#6b4430', '#2b2b38', '#c26a3d', '#e8c26a', '#8b5cf6', '#ff7aa8', '#4a5a70', '#f3f0ea']
-const SHIRTS: Record<string, string[]> = {
-  'claude-code': ['#ff8a4c', '#ff9f6e', '#f2766b', '#ffb36b', '#e9806e'],
-  codex: ['#3ee0c5', '#5ad1e6', '#4cc9a0', '#6fe3d0', '#46b8c8'],
-}
-const OTHER_SHIRTS = ['#9d8cff', '#7fb2ff', '#ff9fd0', '#ffd166']
-
-function paletteFor(agentId: string, harness: string): Palette {
-  const h = hash(agentId)
-  const shirts = SHIRTS[harness] ?? OTHER_SHIRTS
-  return {
-    shirt: shirts[h % shirts.length]!,
-    hair: HAIR[(h >>> 4) % HAIR.length]!,
-    skin: SKIN[(h >>> 8) % SKIN.length]!,
-    accent: ['#ffffff', '#ffe066', '#ff6f91', '#7fdbff'][(h >>> 12) % 4]!,
-    hairStyle: (h >>> 16) % 4,
-  }
-}
-
-export type Activity = ToolCategory | 'thinking' | 'waiting' | 'idle' | 'busy' | 'done' | 'sleeping'
-
-/** What an agent is doing right now, from protocol state alone. */
+/** What an agent is doing right now (the shared protocol activity) plus its newest open tool. */
 export function activityOf(s: SessionState, a: AgentState | undefined, now: number): { activity: Activity; tool?: ToolCallState } {
   if (!a) return { activity: 'idle' }
-  if (a.status === 'waiting') {
-    const t = a.activeTools.map((id) => s.tools[id]).filter(Boolean).pop()
-    return { activity: 'waiting', tool: t }
-  }
-  const open = a.activeTools.map((id) => s.tools[id]).filter((t): t is ToolCallState => !!t && t.endedAt === undefined)
-  const tool = open.filter((t) => t.category !== 'agent').pop() ?? open.pop()
-  if (tool) return { activity: tool.category, tool }
-  if (a.thinking) return { activity: 'thinking' }
-  if (a.status === 'working') return { activity: 'busy' }
-  if (a.status === 'done') return { activity: 'done' }
-  return { activity: now - a.lastActivityAt > 10 * 60_000 ? 'sleeping' : 'idle' }
+  const activity = agentActivity(s, a, now)
+  const open = a.activeTools.map((id) => s.tools[id]).filter((t): t is ToolCallState => !!t)
+  const live = open.filter((t) => t.endedAt === undefined)
+  const tool = live.filter((t) => t.category !== 'agent').pop() ?? live.pop() ?? (activity === 'waiting' ? open.pop() : undefined)
+  return { activity, tool }
 }
+
+export const DIFF_PREVIEW = 5
+export const DIFF_FLY_MS = 650
 
 export class Office {
   rooms = new Map<string, Room>()
   effects: Effect[] = []
+  /** When each file change reaches the front desk (change key → epoch ms). Unknown keys are shown at once. */
+  filedAt = new Map<string, number>()
+  private diffBusy = new Map<string, number>()
   private seen = new Set<number>()
 
   /** Place rooms for the sessions on stage (stable order = stable positions). */
-  layout(ids: string[], world: WorldState): void {
+  layout(ids: string[], world: WorldState, now = Date.now()): void {
     for (const id of [...this.rooms.keys()]) if (!ids.includes(id)) this.rooms.delete(id)
     const cols = ids.length <= 2 ? ids.length : Math.ceil(Math.sqrt(ids.length))
     ids.forEach((id, i) => {
@@ -158,7 +143,7 @@ export class Office {
       if (!room) {
         room = {
           id, ox: 0, oy: 0, harness: s.harness, title: '', desks: deskLayout(), chars: new Map(),
-          doorOpen: 0, doorUntil: 0, cat: { x: 5, y: 5.6, path: [], napUntil: 0, facing: 1, phase: Math.random() * 10 }, initialized: false, gone: new Set(),
+          doorOpen: 0, doorUntil: 0, cat: { x: 5, y: 5.6, path: [], napUntil: 0, facing: 1, phase: Math.random() * 10 }, initialized: false, gone: new Set(), bornAt: now,
         }
         this.rooms.set(id, room)
       }
@@ -208,7 +193,7 @@ export class Office {
         c = {
           id: a.id, sessionId: s.id, name: isRoot ? 'lead' : a.name, role: a.role, isRoot,
           x: ENTRANCE.x, y: ENTRANCE.y, path: [], mode: 'standing', dest: 'stand', deskIdx: -1, spotIdx: -1,
-          palette: paletteFor(a.id, s.harness), facing: 1, phase: Math.random() * 10, jumpUntil: 0,
+          seed: buddySeed(s.id, a.id, s.rootAgentId), facing: 1, phase: Math.random() * 10, jumpUntil: 0,
           blinkAt: now + 1000 + Math.random() * 4000, alpha: room.initialized ? 0 : 1,
         }
         room.chars.set(a.id, c)
@@ -296,7 +281,7 @@ export class Office {
   private effect(room: Room, s: SessionState | undefined, e: ObserverEvent, now: number): void {
     if (!s) return
     const c = room.chars.get(e.agentId)
-    const head = (ch: Char | undefined): Pt3 => ({ x: ch?.x ?? 6, y: ch?.y ?? 3, z: ch?.mode === 'seated' ? 1.25 : 1.45 })
+    const head = (ch: Char | undefined): Pt3 => ({ x: ch?.x ?? 6, y: ch?.y ?? 3, z: 1.5 })
     const deskTop = (ch: Char | undefined): Pt3 => {
       const d = ch && ch.deskIdx >= 0 ? room.desks[ch.deskIdx] : undefined
       return d ? { x: d.x + d.w / 2, y: d.y + d.d / 2, z: 0.85 } : head(ch)
@@ -327,8 +312,25 @@ export class Office {
         } else if (t.category !== 'agent' && t.category !== 'plan') {
           this.effects.push({ kind: 'popup', room: room.id, at: head(c), born: now, dur: 900, text: '✓', color: '#36c98a' })
         }
+        // Edits with a recorded diff get typed out in a bubble and filed; the rest fly as papers.
+        const changed = new Set<string>()
+        for (const ch of (t.changes ?? []).slice(0, 2)) {
+          changed.add(ch.path)
+          const lines = ch.lines.slice(0, DIFF_PREVIEW).map((l) => (l[0] === '@' ? '@' : l.slice(0, 40)))
+          const chars = lines.reduce((n, l) => n + l.length, 0)
+          const typeMs = Math.min(3200, Math.max(1100, 300 + chars * 16))
+          const holdMs = 1000
+          const dur = typeMs + holdMs + DIFF_FLY_MS
+          const born = Math.max(now, this.diffBusy.get(e.agentId) ?? 0)
+          this.diffBusy.set(e.agentId, born + dur - DIFF_FLY_MS * 0.5)
+          const key = `${s.id}:${t.id}:${t.changes!.indexOf(ch)}`
+          this.filedAt.set(key, born + dur)
+          if (this.filedAt.size > 600) for (const k of [...this.filedAt.keys()].slice(0, 300)) this.filedAt.delete(k)
+          this.effects.push({ kind: 'diff', room: room.id, agentId: e.agentId, at: head(c), born, dur, typeMs, holdMs, key, path: ch.path, op: ch.op, added: ch.added, removed: ch.removed, lines, chars })
+        }
         const cabinet: Pt3 = { x: CABINET.x + CABINET.w / 2, y: CABINET.y + CABINET.d / 2, z: CABINET.h + 0.1 }
         for (const f of t.files.slice(0, 3)) {
+          if (changed.has(f.path)) continue
           const toCabinet = f.op === 'edit' || f.op === 'write' || f.op === 'delete'
           const desk = deskTop(c)
           this.effects.push({
@@ -408,7 +410,7 @@ function parsePlan(title: string): { done: number; total: number; label: string 
   return { done: Number(m[1]), total: Math.max(1, Number(m[2])), label }
 }
 
-const CAT_SPOTS: Pt[] = [{ x: 3.2, y: 2.4 }, { x: 7.8, y: 5.3 }, { x: 5.0, y: 8.2 }, { x: 10.6, y: 4.6 }, { x: 1.4, y: 4.2 }, { x: 9.7, y: 8.3 }]
+const CAT_SPOTS: Pt[] = [{ x: 3.2, y: 2.4 }, { x: 7.8, y: 5.3 }, { x: 5.0, y: 8.2 }, { x: 10.6, y: 4.6 }, { x: 1.4, y: 4.2 }, { x: 7.0, y: 7.6 }]
 
 function stepCat(room: Room, dt: number, now: number): void {
   const cat = room.cat

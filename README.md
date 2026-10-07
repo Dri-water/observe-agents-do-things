@@ -20,7 +20,7 @@ Every agent gets a little blob buddy that acts out what it is doing right now:
 
 ### …or as a cosy isometric office
 
-![Agent Office: each session is a room, each agent a little worker. The lead wears a headset, subagents walk in as new hires, your prompts arrive as paper airplanes](docs/images/office-day.png)
+![Agent Office: each session is a room, each agent a little blob. The lead wears a headset, subagents hop in as new hires, your prompts arrive as paper airplanes](docs/images/office-day.png)
 
 Visualizations are plugins over the same data. Three ship today: **Mission Control** (the default), a compact IDE-style dashboard (Dark, Light and Gruvbox themes) built around what needs you; Constellation; and the Agent Office. Pick one in Settings › Visualizations (the `⚙` button, or `Ctrl+,`), where each also has its own options page; Settings also holds the opt-in desktop notifications. Each one owns its entire view: layout, rendering, input and HUD. The office maps spawns to new hires walking in, permission prompts to raised hands, file work to papers flying to the filing cabinet, and finished turns to confetti. See **[docs/VISUALIZATIONS.md](docs/VISUALIZATIONS.md)**, including how to write your own.
 
@@ -47,7 +47,7 @@ Agent visualisers tend to *be* the harness, or to install themselves into it. Th
 - **Replay.** `oadt replay <transcript.jsonl>` replays any recorded session in compressed real time.
 - **Bring your own agent.** `POST /api/ingest` accepts protocol events, so your own agent can show up next to Claude and Codex.
 - **Private by default.** Binds to loopback and rejects foreign `Host` headers (DNS rebinding) and foreign origins. Requires a token when exposed. Optional `--redact content|strict` modes strip text before anything is served.
-- **Tiny.** No runtime dependencies in the core, server or client. The web UI, with both visualizations, is about 45 KB gzipped (JS and CSS), uses vanilla TypeScript and canvas, and makes no external network requests.
+- **Tiny.** No runtime dependencies in the core, server or client. The web UI, with all three visualizations, is about 90 KB gzipped (JS and CSS), uses vanilla TypeScript and canvas, and makes no external network requests.
 
 <table><tr>
 <td width="72%"><img src="docs/images/codex-session.png" alt="A Codex session spawning bench-runner worker threads, with the swimlane timeline below"></td>

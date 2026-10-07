@@ -23,7 +23,7 @@ Mission Control's theme. `?viz=<id>` in the URL and the `V` key also switch.
 |---|---|
 | **Mission Control** (`mission`, the default) | A compact IDE-style dashboard: what needs you, what is running, and how fast, with a blob buddy per agent. Themeable. See below. |
 | **Constellation** (`constellation`) | Agents as glowing nodes with subagents in a radial tree, tool calls as satellites, files in orbit. Swimlane timeline, live feed and an inspector for every session, agent, tool and file. |
-| **Agent Office** (`office`) | A cute isometric office. Each session is a room and each agent a little worker. See below. |
+| **Agent Office** (`office`) | A cute isometric office. Each session is a room and each agent a little blob. See below. |
 
 ### Mission Control
 
@@ -54,28 +54,50 @@ How the data maps onto the office:
 
 | What happens | What you see |
 |---|---|
-| A session | A room with the team's colour on the rug and the session title on a plaque by the door |
-| The main agent | The team lead in a headset at the big two-monitor desk |
-| A subagent is spawned | The phone rings at the parent's desk, the door swings open and a new hire walks in to a free desk |
+| A session | A room with the team's colour on the rug and the session title on a plaque by the door. Its lead is the same blob the session has in Mission Control |
+| The main agent | The team lead, a blob in a headset, at the big two-monitor desk |
+| A subagent is spawned | The phone rings at the parent's desk, the door swings open and a new blob hops in to a free desk |
 | A subagent finishes | It takes a coffee break on the couch, then heads home through the door |
-| A tool call | The worker types, its screen glows in the tool's colour and a chip shows what it's doing |
-| Reading or editing files | Papers fly between the desk and the filing cabinet |
-| A tool fails | A puff of smoke and a red ✗ |
-| Thinking | A thought cloud with bubbling dots |
-| Waiting on you (permission prompt) | The worker raises a hand, a "!" bubble bounces and an amber ring pulses on the floor |
+| A tool call | The blob bobs along (typing, peering, humming, depending on the tool), its screen glows in the tool's colour and a chip shows what it's doing |
+| Reading files | Papers fly from the filing cabinet to the desk |
+| Editing files | The blob types the diff out in a bubble beside it (the changed lines, with a caret), stamps it FILED and sends it flying to the front desk, where the full diff card lands |
+| A tool fails | A puff of smoke, a red ✗ and a queasy face for a few seconds |
+| Thinking | A thought cloud with bubbling dots and a pensive face |
+| Waiting on you (permission prompt) | The blob hops in place with a scared face, a "!" bubble bounces and an amber ring pulses on the floor |
 | Your prompt | A paper airplane flies in through the window to the lead, and the note pops up "FROM YOU" |
 | An assistant message | A speech bubble |
+| A question for you | A "?" bubble and a shy face |
 | A plan / todo update | The whiteboard shows checkboxes and the current step |
 | A finished turn | Confetti and a little jump |
 | Long idle | Zzz |
 
-There are also real details: the wall clock shows your time, the windows follow
-day and night (click the clock to force day or night, or use `?time=day`),
-lamps glow at night, the coffee machine steams, and there's an office cat.
+There are also real details: the wall clock shows your time, the wall screen by
+the door charts the session's tool calls over the last 15 minutes, the windows
+follow day and night (click the clock to force day or night, or use
+`?time=day`), desk lamps and the floor lamp switch on after dark, the coffee
+machine steams, and there's an office cat.
 
-Click any worker for their profile card (role, model, current task, tools,
-tokens, recent work). Drag to pan and scroll to zoom. `F` fits the view, `L`
-toggles name tags and `A` follows all live rooms.
+Everything is drawn procedurally on a canvas, no image assets: one light
+source shades every face, furniture casts soft shadows, and night is a
+multiply wash with the lamps and screens added back on top. The blobs are
+[blobatar](https://github.com/Alain00/blobatar) faces drawn as canvas paths,
+seeded exactly as in Mission Control, so an agent looks the same wherever you
+meet it; the expression and body motion follow the shared activity model.
+
+Click any blob for its profile card: mood, role, model, current task, recent
+tools and the files it just changed, and for the lead the session's turns,
+cost and context fill. Drag to pan and scroll to zoom. `F` fits the view, `L`
+toggles name tags, `A` follows all live rooms, `J`/`K` step through rooms and
+`X` acknowledges everything.
+
+The **front desk** panel shares Mission Control's attention queue: approvals,
+finished turns, failure streaks, nearly full context and long-running tools,
+each with a ✓ to acknowledge. Click an item to jump to that room and agent.
+Under it, **Filed diffs** holds the latest changes from the rooms on screen,
+same cards as Mission Control's live diff feed (click one to expand); a
+change only appears there once its bubble has been filed. The bell in the
+top bar toggles desktop notifications, and the "need you" sticky counts open
+items.
 
 ![Agent Office at night](images/office-night.png)
 
