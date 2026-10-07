@@ -4,9 +4,9 @@
 
 Keep using Claude Code and Codex exactly as you do now: the CLI, the IDE extensions or the desktop apps. `oadt` sits beside them, tails the transcripts they already write, and turns them into one clean live event stream. A visual frontend renders that stream. You can also build your own frontend on top of it in a few lines.
 
-[![Mission Control live: a blob buddy per session acting out what its agent is doing, the attention queue, diffs typing themselves out, and a session opened in the drawer](docs/media/mission-preview.webp)](docs/media/mission.mp4)
+https://github.com/user-attachments/assets/128bed0d-3890-4ca1-8d75-0930b99a1472
 
-<sub>Demo mode (`oadt --demo`). Everything you see is simulated. No real transcripts are used in this repository. **[Full one-minute tour (MP4)](docs/media/mission.mp4)**</sub>
+<sub>A one-minute tour of Mission Control in demo mode (`oadt --demo`). Everything you see is simulated. No real transcripts are used in this repository. The video files are also in [docs/media](docs/media).</sub>
 
 Every agent gets a little blob buddy that acts out what it is doing right now:
 
@@ -16,9 +16,9 @@ Every agent gets a little blob buddy that acts out what it is doing right now:
 
 ### …or as a cosy isometric office
 
-[![Agent Office live: each session is a room and each agent a little blob. The lead wears a headset, subagents hop in as new hires, and your prompts arrive as paper airplanes](docs/media/office-preview.webp)](docs/media/office.mp4)
+https://github.com/user-attachments/assets/6bf8c1ef-9c59-4247-a0a8-3441ba648cc5
 
-<sub>**[Full one-minute tour (MP4)](docs/media/office.mp4)**: rooms, profile cards, the intercom, the front desk and the night shift.</sub>
+<sub>Rooms, profile cards, the intercom, the front desk and the night shift.</sub>
 
 Visualizations are plugins over the same data. Two ship today: **Mission Control** (the default), a compact IDE-style dashboard (Dark, Light and Gruvbox themes) built around what needs you, and the **Agent Office**. Pick one in Settings › Visualizations (the `⚙` button, or `Ctrl+,`), where each also has its own options page; Settings also holds the opt-in desktop notifications. Each one owns its entire view: layout, rendering, input and HUD. The office maps spawns to new hires walking in, permission prompts to raised hands, file work to papers flying to the filing cabinet, and finished turns to confetti. See **[docs/VISUALIZATIONS.md](docs/VISUALIZATIONS.md)**, including how to write your own.
 
