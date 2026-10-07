@@ -1,6 +1,6 @@
 # Building a frontend
 
-The bundled constellation UI is just one consumer. Any frontend gets the same
+The bundled web app is just one consumer. Any frontend gets the same
 data, and the core does the hard parts:
 
 - parsing each harness's format

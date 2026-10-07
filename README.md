@@ -14,15 +14,11 @@ Every agent gets a little blob buddy that acts out what it is doing right now:
 
 ---
 
-### …or as a constellation
-
-![A Claude Code session: the main agent with Explore, security-review and docs subagents fanned out around it, tool calls in flight, files orbiting, and the inspector showing tokens, context fill and cost](docs/images/claude-session.png)
-
 ### …or as a cosy isometric office
 
 ![Agent Office: each session is a room, each agent a little blob. The lead wears a headset, subagents hop in as new hires, your prompts arrive as paper airplanes](docs/images/office-day.png)
 
-Visualizations are plugins over the same data. Three ship today: **Mission Control** (the default), a compact IDE-style dashboard (Dark, Light and Gruvbox themes) built around what needs you; Constellation; and the Agent Office. Pick one in Settings › Visualizations (the `⚙` button, or `Ctrl+,`), where each also has its own options page; Settings also holds the opt-in desktop notifications. Each one owns its entire view: layout, rendering, input and HUD. The office maps spawns to new hires walking in, permission prompts to raised hands, file work to papers flying to the filing cabinet, and finished turns to confetti. See **[docs/VISUALIZATIONS.md](docs/VISUALIZATIONS.md)**, including how to write your own.
+Visualizations are plugins over the same data. Two ship today: **Mission Control** (the default), a compact IDE-style dashboard (Dark, Light and Gruvbox themes) built around what needs you, and the **Agent Office**. Pick one in Settings › Visualizations (the `⚙` button, or `Ctrl+,`), where each also has its own options page; Settings also holds the opt-in desktop notifications. Each one owns its entire view: layout, rendering, input and HUD. The office maps spawns to new hires walking in, permission prompts to raised hands, file work to papers flying to the filing cabinet, and finished turns to confetti. See **[docs/VISUALIZATIONS.md](docs/VISUALIZATIONS.md)**, including how to write your own.
 
 ## Why
 
@@ -34,25 +30,22 @@ Agent visualisers tend to *be* the harness, or to install themselves into it. Th
 
 ## Features
 
-- **Swappable visualizations.** Each visualization is a plugin that defines its whole view; the core only provides data. Three ship today: *Mission Control* (the default), *Constellation* and *Agent Office*. Adding one is a single module plus one line to register it.
+- **Swappable visualizations.** Each visualization is a plugin that defines its whole view; the core only provides data. Two ship today: *Mission Control* (the default) and *Agent Office*. Adding one is a single module plus one line to register it.
 - **Agents with a face.** Every agent gets a blob buddy, drawn by [blobatar](https://github.com/Alain00/blobatar), that types while it edits, peers around while it searches, hops with a "!" when it needs your approval and dozes off when idle. What it acts out comes from `sessionActivity` / `agentActivity` in the protocol, so any frontend can use the same signal.
-- **Live constellation view.** Agents are glowing nodes. Subagents branch off the tool call that spawned them. Tool calls fly out as color-coded satellites, and the files each agent touches orbit as heat-mapped tiles. Particles show prompts, results and inter-agent messages as they happen.
 - **Subagents in both harnesses.** Claude Code `Agent`/`Task` subagents are linked through their `meta.json` sidecars. Codex `spawn_agent` threads are rebuilt into one tree across separate rollout files.
 - **Tells you when you're needed.** A shared attention model (in the protocol, so every frontend agrees) covers approvals waiting, finished turns, failure streaks, nearly full context and long-running tools. Optional desktop notifications, a chime and a tab-title count work in every visualization.
 - **Knows when you're needed.** Sessions move between *working*, *waiting* and *idle*. *Waiting* means a tool has been pending with no transcript activity, which is almost always a permission prompt. *Idle* means the turn ended.
-- **Swimlane timeline.** One lane per agent, with tool calls as bars and markers for prompts and turn ends. Hover for detail, click to inspect.
-- **Inspector.** Click any session, agent, tool call or file. It shows tool input and output, failures, durations, the agent tree, tokens by type, context-window fill, reported cost, lines changed, PR links and Codex goals.
-- **Many sessions at once.** *Follow live activity* lays every running session out side by side, across projects and harnesses.
+- **Many sessions at once.** Every session across projects and harnesses side by side. Open one for the full picture: every tool call with its input and output, diffs, the conversation, the agent tree, files touched, tokens, context fill and reported cost.
 - **Huge transcripts are fine.** A byte-level, UTF-8-safe tailer reads the head plus a bounded tail, so multi-hundred-MB rollouts load in milliseconds.
 - **Replay.** `oadt replay <transcript.jsonl>` replays any recorded session in compressed real time.
 - **Bring your own agent.** `POST /api/ingest` accepts protocol events, so your own agent can show up next to Claude and Codex.
 - **Private by default.** Binds to loopback and rejects foreign `Host` headers (DNS rebinding) and foreign origins. Requires a token when exposed. Optional `--redact content|strict` modes strip text before anything is served.
-- **Tiny.** No runtime dependencies in the core, server or client. The web UI, with all three visualizations, is about 90 KB gzipped (JS and CSS), uses vanilla TypeScript and canvas, and makes no external network requests.
+- **Tiny.** No runtime dependencies in the core, server or client. The web UI, with both visualizations, is about 75 KB gzipped (JS and CSS), uses vanilla TypeScript and canvas, and makes no external network requests.
 
 <table><tr>
-<td width="72%"><img src="docs/images/codex-session.png" alt="A Codex session spawning bench-runner worker threads, with the swimlane timeline below"></td>
-<td width="28%"><img src="docs/images/mobile.png" alt="The same view on a phone"></td>
-</tr><tr><td>Codex: <code>spawn_agent</code> threads become a tree; the timeline shows each agent's tool calls.</td><td>Works on a phone too.</td></tr></table>
+<td width="72%"><img src="docs/images/mission-drawer.png" alt="A session opened in the drawer: the main agent and each subagent with its own buddy, what it is doing and how many tools it has run"></td>
+<td width="28%"><img src="docs/images/mission-mobile.png" alt="Mission Control on a phone"></td>
+</tr><tr><td>Open any session for its activity, diffs, chat, agents and files.</td><td>Works on a phone too.</td></tr></table>
 
 ## Quick start
 
@@ -102,7 +95,7 @@ flowchart LR
     API["REST + Server-Sent Events"]
   end
   subgraph Frontends["Frontends (pixels)"]
-    W["Web constellation"]
+    W["Web app<br/>Mission Control · Agent Office"]
     TD["Terminal dashboard"]
     N["Notifier"]
     X["…yours"]
@@ -252,7 +245,7 @@ Transcripts contain your code and your conversations, so `oadt` is careful with 
 | [`@oadt/server`](packages/server) | HTTP + SSE API, the `oadt` CLI | core, protocol |
 | [`@oadt/client`](packages/client) | Browser/Node live client with resume | protocol |
 | [`@oadt/react`](packages/react) | React provider and hooks (`useSessions`, `useSession`, `useAgentTree`, `useOpenTools`, `useEvents`…) | client, react (peer) |
-| [`apps/web`](apps/web) | The bundled web app: a host plus the Constellation and Agent Office visualizations | client |
+| [`apps/web`](apps/web) | The bundled web app: a host plus the Mission Control and Agent Office visualizations | client, blobatar |
 
 ## Development
 

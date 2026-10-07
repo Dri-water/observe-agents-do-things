@@ -1,4 +1,8 @@
-html, body { margin: 0; height: 100%; background: #05070d; overflow: hidden; }
+/* Base shared by every visualization and the host chrome. */
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--st-bg); color: var(--st-fg); font: 13px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; overflow: hidden; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+[hidden] { display: none !important; }
 #viz-root, .viz { position: fixed; inset: 0; }
 
 /* Host chrome palette, set by the active visualization through setChromeTheme(). */

@@ -7,7 +7,7 @@ owns everything inside its element:
 - its DOM and layout (sidebars, HUDs, panels, or none at all)
 - its rendering technology (canvas 2D, SVG, WebGL, a framework, plain HTML)
 - its own input handling, camera, animation loop and styles
-- its own *interpretation* of the data (stars and orbits, an office building, a table…)
+- its own *interpretation* of the data (a dashboard, an office building, a table…)
 
 What it does **not** do is parse transcripts, derive agent status or link
 subagents. That all happens in the core, and the visualization reads it from
@@ -22,7 +22,6 @@ Mission Control's theme. `?viz=<id>` in the URL and the `V` key also switch.
 | | |
 |---|---|
 | **Mission Control** (`mission`, the default) | A compact IDE-style dashboard: what needs you, what is running, and how fast, with a blob buddy per agent. Themeable. See below. |
-| **Constellation** (`constellation`) | Agents as glowing nodes with subagents in a radial tree, tool calls as satellites, files in orbit. Swimlane timeline, live feed and an inspector for every session, agent, tool and file. |
 | **Agent Office** (`office`) | A cute isometric office. Each session is a room and each agent a little blob. See below. |
 
 ### Mission Control

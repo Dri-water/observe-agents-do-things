@@ -14,9 +14,6 @@ export const CATEGORY: Record<ToolCategory, { color: string; label: string; glyp
   other: { color: '#7b8798', label: 'Other', glyph: '•' },
 }
 
-export function categoryColor(c: ToolCategory | string): string {
-  return CATEGORY[c as ToolCategory]?.color ?? CATEGORY.other.color
-}
 
 export const HARNESS: Record<string, { color: string; label: string; short: string }> = {
   'claude-code': { color: '#ff8a4c', label: 'Claude Code', short: 'Claude' },
@@ -27,18 +24,3 @@ export function harnessInfo(h: Harness): { color: string; label: string; short: 
   return HARNESS[h] ?? { color: '#a0aec0', label: h, short: h }
 }
 
-export const STATUS_COLOR = {
-  working: '#4fe39b',
-  waiting: '#ffb547',
-  idle: '#6b7789',
-  done: '#4a5566',
-  ended: '#4a5566',
-} as const
-
-export const FILE_OP_COLOR = {
-  read: '#5aa9ff',
-  search: '#8f7dff',
-  edit: '#ffb547',
-  write: '#4fe39b',
-  delete: '#ff5d73',
-} as const

@@ -259,14 +259,6 @@
   .mc-kpis { grid-template-columns: repeat(3, 1fr); }
   .mc-throughput { grid-column: 1 / -1; height: 64px; }
 }
-@media (max-width: 800px) {
-  .mc, .mc.pinned { grid-template-columns: 1fr; grid-template-areas: "title" "main" "status"; }
-  .mc-act { display: none; }
-  .mc.pinned .mc-drawer { position: absolute; }
-  .mc-scrim { left: 0; }
-  .mc-split { grid-template-columns: 1fr; }
-  .mc-search { display: none; }
-}
 
 .mc-attn-badge.medium { background: var(--warn-bg); color: var(--warn); }
 .mc-fill { flex: 1; display: flex; flex-direction: column; min-height: 220px; border-bottom: 0; }
@@ -360,3 +352,18 @@
   vertical-align: -.2em; background: var(--accent); animation: mc-caret 1s steps(2) infinite;
 }
 @keyframes mc-caret { 50% { opacity: 0; } }
+
+/* Phones: last in the file so it wins over the base rules above. */
+@media (max-width: 800px) {
+  .mc, .mc.pinned { grid-template-columns: 1fr; grid-template-rows: 32px 36px minmax(0, 1fr) 22px; grid-template-areas: "title" "act" "main" "status"; }
+  .mc-act { flex-direction: row; padding: 0 4px; border-right: 0; border-bottom: 1px solid var(--border); }
+  .mc-act button { height: 35px; border-left: 0; border-bottom: 2px solid transparent; }
+  .mc-act button.on { border-bottom-color: var(--accent); }
+  .mc-act .oadt-controls { margin: 0 0 0 auto; }
+  .mc-act .oadt-settings-button { height: 35px; }
+  .mc.pinned .mc-drawer { position: absolute; }
+  .mc-scrim { left: 0; }
+  .mc-split { grid-template-columns: 1fr; }
+  .mc-pane + .mc-pane { border-left: 0; border-top: 1px solid var(--border); }
+  .mc-search { display: none; }
+}

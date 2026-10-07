@@ -25,12 +25,6 @@ export function h(tag: string, attrs?: Attrs | null, ...children: Child[]): HTML
   return el
 }
 
-export function $(sel: string, root: ParentNode = document): HTMLElement {
-  const el = root.querySelector(sel)
-  if (!el) throw new Error(`missing ${sel}`)
-  return el as HTMLElement
-}
-
 /** Replace an element's children only when the content key changed (cheap diffing for panels). */
 export function render(el: HTMLElement, key: string, build: () => Child[]): void {
   if (el.dataset.key === key) return
