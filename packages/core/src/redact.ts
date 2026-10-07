@@ -23,6 +23,7 @@ export function redact(e: EventDraft, mode: RedactMode): EventDraft {
       return {
         ...e,
         input: undefined,
+        changes: undefined,
         title: strict ? e.tool : e.title,
         files: strict ? [] : e.files,
       }

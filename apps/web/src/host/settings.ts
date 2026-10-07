@@ -1,7 +1,7 @@
 /**
  * App settings: a tiny persisted key/value store with change subscriptions.
- * The host owns global settings; visualizations declare their own (namespaced
- * by visualization id) and the settings page renders all of them.
+ * The host owns app-wide settings (which visualization, notifications);
+ * each visualization declares its own, stored under `<viz id>.<key>`.
  */
 
 export type SettingValue = string | boolean
@@ -13,13 +13,6 @@ export interface SettingDef {
   type: 'select' | 'toggle'
   options?: Array<{ value: string; label: string }>
   default: SettingValue
-}
-
-export interface SettingsSection {
-  id: string
-  title: string
-  description?: string
-  settings: SettingDef[]
 }
 
 type Listener = (value: SettingValue, key: string) => void
@@ -68,43 +61,31 @@ export class Settings {
 
 export type ThemeName = 'dark' | 'light' | 'gruvbox-dark' | 'gruvbox-light'
 
-/** Resolve the theme setting ('system' follows the OS) to a concrete theme. */
+/** Resolve a theme setting ('system' follows the OS) to a concrete theme. */
 export function resolveTheme(setting: string): ThemeName {
   if (setting === 'system') return matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
   return setting as ThemeName
 }
 
-export const GLOBAL_SETTINGS: SettingsSection[] = [
-  {
-    id: 'appearance',
-    title: 'Appearance',
-    settings: [
-      {
-        key: 'theme', label: 'Theme', type: 'select', default: 'system',
-        description: 'Used by visualizations that support themes (Mission Control) and by this settings page.',
-        options: [
-          { value: 'system', label: 'Follow system' },
-          { value: 'dark', label: 'Dark' },
-          { value: 'light', label: 'Light' },
-          { value: 'gruvbox-dark', label: 'Gruvbox Dark' },
-          { value: 'gruvbox-light', label: 'Gruvbox Light' },
-        ],
-      },
-    ],
-  },
-  {
-    id: 'notifications',
-    title: 'Notifications',
-    description: 'Alerts work in every visualization. They are computed from the shared attention rules.',
-    settings: [
-      { key: 'notify.desktop', label: 'Desktop notifications', type: 'toggle', default: false, description: 'Show a system notification when something needs you. Your browser will ask for permission.' },
-      { key: 'notify.sound', label: 'Sound', type: 'toggle', default: false, description: 'Play a short chime with each alert.' },
-      { key: 'notify.title', label: 'Count in tab title', type: 'toggle', default: true, description: 'Prefix the tab title with the number of unacknowledged items.' },
-      { key: 'notify.waiting', label: 'Approval needed', type: 'toggle', default: true, description: 'An agent is waiting on a permission prompt.' },
-      { key: 'notify.finished', label: 'Turn finished', type: 'toggle', default: true, description: 'A session finished its turn and is ready for review.' },
-      { key: 'notify.errors', label: 'Failure streaks', type: 'toggle', default: true, description: 'Several tool calls failed in a row.' },
-      { key: 'notify.context', label: 'Context almost full', type: 'toggle', default: false },
-      { key: 'notify.long-tool', label: 'Long-running tools', type: 'toggle', default: false },
-    ],
-  },
+/** A ready-made theme setting for visualizations that support the app's themes. */
+export const THEME_SETTING: SettingDef = {
+  key: 'theme', label: 'Theme', type: 'select', default: 'system',
+  options: [
+    { value: 'system', label: 'Follow system' },
+    { value: 'dark', label: 'Dark' },
+    { value: 'light', label: 'Light' },
+    { value: 'gruvbox-dark', label: 'Gruvbox Dark' },
+    { value: 'gruvbox-light', label: 'Gruvbox Light' },
+  ],
+}
+
+export const NOTIFICATION_SETTINGS: SettingDef[] = [
+  { key: 'notify.desktop', label: 'Desktop notifications', type: 'toggle', default: false, description: 'Show a system notification when something needs you. Your browser will ask for permission.' },
+  { key: 'notify.sound', label: 'Sound', type: 'toggle', default: false, description: 'Play a short chime with each alert.' },
+  { key: 'notify.title', label: 'Count in tab title', type: 'toggle', default: true, description: 'Prefix the tab title with the number of unacknowledged items.' },
+  { key: 'notify.waiting', label: 'Approval needed', type: 'toggle', default: true, description: 'An agent is waiting on a permission prompt.' },
+  { key: 'notify.finished', label: 'Turn finished', type: 'toggle', default: true, description: 'A session finished its turn and is ready for review.' },
+  { key: 'notify.errors', label: 'Failure streaks', type: 'toggle', default: true, description: 'Several tool calls failed in a row.' },
+  { key: 'notify.context', label: 'Context almost full', type: 'toggle', default: false, description: 'A live session is close to its context window.' },
+  { key: 'notify.long-tool', label: 'Long-running tools', type: 'toggle', default: false, description: 'A tool has been running for several minutes.' },
 ]

@@ -108,6 +108,7 @@ export const constellation: Visualization = {
   id: 'constellation',
   name: 'Constellation',
   description: 'Agents as stars, tool calls as satellites, files in orbit — plus timeline, feed and inspector.',
+  icon: '✦',
   settings: [
     { key: 'labels', label: 'Tool labels', type: 'toggle', default: true, description: 'Label recent tool calls around each agent. Shortcut: L.' },
     { key: 'showIdle', label: 'Show older sessions', type: 'toggle', default: false, description: 'Include sessions idle for more than an hour in the session list.' },
@@ -120,7 +121,8 @@ function mount(root: HTMLElement, vctx: VizContext) {
   root.innerHTML = TEMPLATE
   const $ = (sel: string): HTMLElement => qs(sel, root)
   const client = vctx.client
-  $('.top-actions').prepend(vctx.switcher)
+  $('.top-actions').prepend(vctx.controls)
+  vctx.setChromeTheme('dark')
 
   // ─── UI state ───────────────────────────────────────────────────────────
   const ui = {

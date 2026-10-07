@@ -13,6 +13,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { emptyUsage, type EventDraft, type Usage } from '@oadt/protocol'
 import { basename, clip, compactInput, contentText, firstLine, humanText, isRecord, num, str, toMs } from '../text.js'
+import { patchChanges } from '../diff.js'
 import { codexOutputOk, describeCodexTool } from '../tools.js'
 import type { Emit, LineParser, TranscriptAdapter } from './types.js'
 
@@ -303,6 +304,7 @@ export class CodexRolloutParser implements LineParser {
           title: d.title,
           input: compactInput(args ?? rawInput),
           files: d.files,
+          changes: name === 'apply_patch' || name === 'exec' ? patchChanges(rawInput ?? str(args?.input) ?? str(args?.patch) ?? '') : undefined,
           mcpServer: d.mcpServer,
         })
         return

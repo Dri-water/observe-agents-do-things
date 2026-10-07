@@ -1,12 +1,13 @@
 /**
- * The host: connects to the observer once, owns settings, theme and attention
+ * The host: connects to the observer once, owns settings and attention
  * (notifications), and mounts one visualization at a time into #viz-root.
- * Visualizations own everything they draw — see viz/types.ts.
+ * Visualizations own everything they draw — see viz/types.ts. Which
+ * visualization is shown is chosen in Settings › Visualizations.
  */
 import './host.css'
 import { connect } from '@oadt/client'
 import { AttentionService } from './host/attention'
-import { GLOBAL_SETTINGS, resolveTheme, Settings, type SettingDef, type SettingsSection, type ThemeName } from './host/settings'
+import { NOTIFICATION_SETTINGS, resolveTheme, Settings, type SettingDef, type ThemeName } from './host/settings'
 import { SettingsPanel } from './host/settings-panel'
 import { VISUALIZATIONS } from './viz'
 import type { VizInstance, Visualization } from './viz/types'
@@ -27,84 +28,35 @@ if (params.has('token')) {
 const client = connect({ url: params.get('api') ?? '', token })
 const root = document.getElementById('viz-root')!
 
-// ─── Settings & theme ───────────────────────────────────────────────────
+// ─── Settings ───────────────────────────────────────────────────────────
 
 const settings = new Settings()
-const vizSetting: SettingDef = {
-  key: 'viz', label: 'Visualization', type: 'select', default: VISUALIZATIONS[0]!.id,
-  description: 'Each visualization is a different way of looking at the same live data. Shortcut: V.',
-  options: VISUALIZATIONS.map((v) => ({ value: v.id, label: v.name })),
-}
-settings.define([vizSetting, ...GLOBAL_SETTINGS.flatMap((s) => s.settings)])
+const VIZ_SETTING: SettingDef = { key: 'viz', label: 'Visualization', type: 'select', default: VISUALIZATIONS[0]!.id }
+settings.define([VIZ_SETTING, ...NOTIFICATION_SETTINGS])
 for (const v of VISUALIZATIONS) settings.define((v.settings ?? []).map((d) => ({ ...d, key: `${v.id}.${d.key}` })))
 
-function sections(): SettingsSection[] {
-  const [appearance, ...rest] = GLOBAL_SETTINGS
-  return [
-    { ...appearance!, settings: [vizSetting, ...appearance!.settings] },
-    ...rest,
-    ...VISUALIZATIONS.filter((v) => v.settings?.length).map((v) => ({
-      id: v.id,
-      title: v.name,
-      description: v.description,
-      settings: v.settings!.map((d) => ({ ...d, key: `${v.id}.${d.key}` })),
-    })),
-  ]
-}
-
-const themeListeners = new Set<(t: ThemeName) => void>()
-let theme = resolveTheme(settings.get<string>('theme'))
-function applyTheme(): void {
-  theme = resolveTheme(settings.get<string>('theme'))
+// The host's own UI follows whatever the active visualization asks for.
+function setChromeTheme(theme: ThemeName): void {
   document.documentElement.dataset.theme = theme
-  for (const fn of themeListeners) fn(theme)
 }
-settings.on('theme', applyTheme)
-matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
-  if (settings.get('theme') === 'system') applyTheme()
-})
-applyTheme()
-
-// ─── Attention & settings page ──────────────────────────────────────────
+setChromeTheme(resolveTheme('system'))
 
 let current: { viz: Visualization; instance: VizInstance; slot: HTMLElement } | undefined
 const attention = new AttentionService(client, settings, (sessionId) => current?.instance.focusSession?.(sessionId))
-const panel = new SettingsPanel({ settings, sections, attention })
+const panel = new SettingsPanel({ settings, attention, client, visualizations: VISUALIZATIONS, active: () => current?.viz.id })
 document.body.append(panel.el)
 
-// ─── Host controls (switcher + settings button) ─────────────────────────
+// ─── Host controls: just the settings button ────────────────────────────
 
-const switcher = document.createElement('div')
-switcher.className = 'viz-switcher'
-const button = document.createElement('button')
-button.className = 'viz-switcher-button'
-button.title = 'Switch visualization (V)'
+const controls = document.createElement('div')
+controls.className = 'oadt-controls'
 const gear = document.createElement('button')
-gear.className = 'viz-switcher-button viz-settings-button'
+gear.className = 'oadt-settings-button'
 gear.title = 'Settings (Ctrl+,)'
 gear.setAttribute('aria-label', 'Settings')
-gear.textContent = '⚙'
+gear.innerHTML = '<span aria-hidden="true">⚙</span><span>Settings</span>'
 gear.addEventListener('click', () => panel.toggle())
-const menu = document.createElement('div')
-menu.className = 'viz-switcher-menu'
-menu.hidden = true
-switcher.append(button, gear, menu)
-
-function renderSwitcher(): void {
-  button.innerHTML = `<span class="viz-switcher-icon">◐</span><span></span><span class="viz-switcher-caret">▾</span>`
-  button.children[1]!.textContent = current?.viz.name ?? 'View'
-  menu.replaceChildren(...VISUALIZATIONS.map((v) => {
-    const item = document.createElement('button')
-    item.className = 'viz-switcher-item' + (v.id === current?.viz.id ? ' on' : '')
-    item.innerHTML = `<b></b><span></span>`
-    item.querySelector('b')!.textContent = v.name
-    item.querySelector('span')!.textContent = v.description
-    item.addEventListener('click', () => { menu.hidden = true; settings.set('viz', v.id) })
-    return item
-  }))
-}
-button.addEventListener('click', (e) => { e.stopPropagation(); menu.hidden = !menu.hidden })
-document.addEventListener('click', (e) => { if (!switcher.contains(e.target as Node)) menu.hidden = true })
+controls.append(gear)
 
 // ─── Mounting ───────────────────────────────────────────────────────────
 
@@ -113,8 +65,9 @@ function show(id: string): void {
   if (current?.viz.id === viz.id) return
   current?.instance.destroy()
   current?.slot.remove()
-  switcher.remove()
-  switcher.classList.remove('floating')
+  controls.remove()
+  controls.classList.remove('floating')
+  setChromeTheme(resolveTheme('system'))
 
   // Each visualization gets a fresh element, so nothing leaks between them.
   const slot = document.createElement('div')
@@ -125,19 +78,17 @@ function show(id: string): void {
     slot,
     instance: viz.mount(slot, {
       client,
-      switcher,
+      controls,
       settings,
       attention,
-      theme: () => theme,
-      onTheme: (fn) => { themeListeners.add(fn); return () => themeListeners.delete(fn) },
-      openSettings: (section) => panel.open(section),
+      setChromeTheme,
+      openSettings: (page) => panel.open(page),
     }),
   }
-  if (!switcher.isConnected) {
-    switcher.classList.add('floating')
-    document.body.append(switcher)
+  if (!controls.isConnected) {
+    controls.classList.add('floating')
+    document.body.append(controls)
   }
-  renderSwitcher()
   const url = new URL(location.href)
   url.searchParams.set('viz', viz.id)
   history.replaceState(null, '', url)
@@ -153,7 +104,7 @@ window.addEventListener('keydown', (e) => {
     return
   }
   if (panel.isOpen) {
-    // The settings page is modal: keep shortcuts from reaching the visualization behind it.
+    // The dialog is modal: keep shortcuts from reaching the visualization behind it.
     e.stopImmediatePropagation()
     if (e.key === 'Escape') panel.close()
     return
@@ -176,6 +127,7 @@ show(settings.get<string>('viz'))
   show: (id: string) => settings.set('viz', id),
   settings,
   attention,
+  openSettings: (page?: string) => panel.open(page),
   visualizations: VISUALIZATIONS,
   get current() { return current?.viz.id },
 }

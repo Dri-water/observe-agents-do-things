@@ -9,6 +9,7 @@ export { CodexAdapter, CodexRolloutParser, type CodexAdapterOptions } from './ad
 export type { TranscriptAdapter, LineParser, Emit } from './adapters/types.js'
 export { describeClaudeTool, describeCodexTool, describeCodexExec, patchFiles, codexOutputOk, type ToolDescription } from './tools.js'
 export { humanText, relPath } from './text.js'
+export { claudeChanges, lineDiff, patchChanges } from './diff.js'
 export { DemoSource } from './sources/demo.js'
 export { ReplaySource, loadTranscripts, type ReplayOptions } from './sources/replay.js'
 export * from '@oadt/protocol'

@@ -3,7 +3,8 @@
  * Code, one Codex — with subagents, failing tests, permission waits and fixes.
  * Used for `oadt --demo`, screenshots, and frontend development. No real data.
  */
-import type { EventDraft, FileRef, ToolCategory } from '@oadt/protocol'
+import type { EventDraft, FileChange, FileRef, ToolCategory } from '@oadt/protocol'
+import { claudeChanges, patchChanges } from '../diff.js'
 import type { Emit } from '../adapters/types.js'
 import type { Source } from '../observer.js'
 
@@ -59,9 +60,9 @@ class Actor {
     })
   }
 
-  start(tool: string, category: ToolCategory, title: string, files: FileRef[] = [], input?: unknown): string {
+  start(tool: string, category: ToolCategory, title: string, files: FileRef[] = [], input?: unknown, changes?: FileChange[]): string {
     const callId = uid('call')
-    this.send({ kind: 'tool.started', callId, tool, category, title, files, input })
+    this.send({ kind: 'tool.started', callId, tool, category, title, files, input, changes })
     return callId
   }
 
@@ -69,8 +70,8 @@ class Actor {
     this.send({ kind: 'tool.finished', callId, ok, output })
   }
 
-  async tool(tool: string, category: ToolCategory, title: string, opts: { files?: FileRef[]; ms?: number; ok?: boolean; output?: string; input?: unknown } = {}): Promise<string> {
-    const id = this.start(tool, category, title, opts.files, opts.input)
+  async tool(tool: string, category: ToolCategory, title: string, opts: { files?: FileRef[]; ms?: number; ok?: boolean; output?: string; input?: unknown; changes?: FileChange[] } = {}): Promise<string> {
+    const id = this.start(tool, category, title, opts.files, opts.input, opts.changes)
     await this.clock.sleep(opts.ms ?? 1200)
     this.finish(id, opts.ok ?? true, opts.output ?? (opts.ok === false ? 'Error: command failed' : 'ok'))
     this.tokens(80 + Math.random() * 200)
@@ -81,6 +82,75 @@ class Actor {
     return new Actor(this.emit, this.clock, this.harness, this.sessionId, agentId, this.model)
   }
 }
+
+const RATE_LIMIT_TS = [
+  "import type { NextFunction, Request, Response } from 'express'",
+  "",
+  "const buckets = new Map<string, { tokens: number; at: number }>()",
+  "",
+  "/** Token bucket per user: `capacity` burst, refilled at `perMinute`. */",
+  "export function rateLimit(capacity = 20, perMinute = 60) {",
+  "  return (req: Request, res: Response, next: NextFunction) => {",
+  "    const key = req.user?.id ?? req.ip",
+  "    const now = Date.now()",
+  "    const b = buckets.get(key) ?? { tokens: capacity, at: now }",
+  "    b.tokens = Math.min(capacity, b.tokens + ((now - b.at) / 60_000) * perMinute)",
+  "    b.at = now",
+  "    if (b.tokens < 1) return res.status(429).set('Retry-After', '1').end()",
+  "    b.tokens -= 1",
+  "    buckets.set(key, b)",
+  "    next()",
+  "  }",
+  "}",
+].join('\n')
+
+const RATE_LIMIT_TEST = [
+  "import { describe, expect, it } from 'vitest'",
+  "import request from 'supertest'",
+  "import { app } from '../src/server'",
+  "",
+  "describe('rate limiting', () => {",
+  "  it('allows bursts up to capacity', async () => {",
+  "    for (let i = 0; i < 20; i++) await request(app).get('/status').expect(200)",
+  "    await request(app).get('/status').expect(429)",
+  "  })",
+  "",
+  "  it('sets Retry-After when limited', async () => {",
+  "    const res = await request(app).get('/status')",
+  "    expect(res.headers['retry-after']).toBe('1')",
+  "  })",
+  "})",
+].join('\n')
+
+const PIPELINE_PATCH = [
+  "*** Begin Patch",
+  "*** Update File: src/pipeline.rs",
+  "@@ pub fn thumbnail(raw: &[u8], w: u32, h: u32) -> Result<Vec<u8>>",
+  "-    let mut encoder = Encoder::new(Quality::High);",
+  "+    let mut encoder = ENCODER.with(|e| e.take()).unwrap_or_else(|| Encoder::new(Quality::High));",
+  "     let img = resize(&raw, w, h)?;",
+  "-    encoder.encode(&img)",
+  "+    let out = encoder.encode(&img);",
+  "+    ENCODER.with(|e| e.set(Some(encoder)));",
+  "+    out",
+  "*** Update File: src/encoder.rs",
+  "@@ impl Encoder",
+  "+thread_local! {",
+  "+    pub static ENCODER: Cell<Option<Encoder>> = const { Cell::new(None) };",
+  "+}",
+  "*** End Patch",
+].join('\n')
+
+const ENCODER_FIX = [
+  "*** Begin Patch",
+  "*** Update File: src/encoder.rs",
+  "@@ pub fn encode(&mut self, img: &Image) -> Result<Vec<u8>>",
+  "-        let buf = &mut self.scratch;",
+  "-        self.write_header(buf)?;",
+  "+        let mut buf = std::mem::take(&mut self.scratch);",
+  "+        self.write_header(&mut buf)?;",
+  "*** End Patch",
+].join('\n')
 
 const read = (path: string): FileRef[] => [{ path, op: 'read' }]
 const edit = (path: string): FileRef[] => [{ path, op: 'edit' }]
@@ -122,13 +192,13 @@ async function claudeSession(emit: Emit, clock: Clock): Promise<void> {
     main.finish(exploreCall, true, 'Middleware order: cors → logging → auth → routes → errors.')
 
     await main.tool('TodoWrite', 'plan', 'Todos 0/4 · Writing token bucket', { ms: 300 })
-    await main.tool('Write', 'write', 'Write src/middleware/rateLimit.ts', { files: write(`${root}/src/middleware/rateLimit.ts`), ms: 1400 })
-    await main.tool('Edit', 'edit', 'Edit src/server.ts', { files: edit(`${root}/src/server.ts`), ms: 900 })
-    await main.tool('Edit', 'edit', 'Edit src/config.ts', { files: edit(`${root}/src/config.ts`), ms: 700 })
-    await main.tool('Write', 'write', 'Write test/rateLimit.test.ts', { files: write(`${root}/test/rateLimit.test.ts`), ms: 1200 })
+    await main.tool('Write', 'write', 'Write src/middleware/rateLimit.ts', { files: write(`${root}/src/middleware/rateLimit.ts`), ms: 1400, changes: claudeChanges('Write', { file_path: `${root}/src/middleware/rateLimit.ts`, content: RATE_LIMIT_TS }) })
+    await main.tool('Edit', 'edit', 'Edit src/server.ts', { files: edit(`${root}/src/server.ts`), ms: 900, changes: claudeChanges('Edit', { file_path: `${root}/src/server.ts`, old_string: "import { auth } from './middleware/auth'\nimport { routes } from './routes'\n\napp.use(cors())\napp.use(logging())\napp.use(auth())\napp.use(routes)", new_string: "import { auth } from './middleware/auth'\nimport { rateLimit } from './middleware/rateLimit'\nimport { routes } from './routes'\n\napp.use(cors())\napp.use(logging())\napp.use(auth())\napp.use(rateLimit(config.rateLimit.burst, config.rateLimit.perMinute))\napp.use(routes)" }) })
+    await main.tool('Edit', 'edit', 'Edit src/config.ts', { files: edit(`${root}/src/config.ts`), ms: 700, changes: claudeChanges('Edit', { file_path: `${root}/src/config.ts`, old_string: "export const config = Object.freeze({\n  port: Number(process.env.PORT ?? 8080),\n  logLevel: process.env.LOG_LEVEL ?? 'info',\n})", new_string: "export const config = Object.freeze({\n  port: Number(process.env.PORT ?? 8080),\n  logLevel: process.env.LOG_LEVEL ?? 'info',\n  rateLimit: { burst: 20, perMinute: 60 },\n})" }) })
+    await main.tool('Write', 'write', 'Write test/rateLimit.test.ts', { files: write(`${root}/test/rateLimit.test.ts`), ms: 1200, changes: claudeChanges('Write', { file_path: `${root}/test/rateLimit.test.ts`, content: RATE_LIMIT_TEST }) })
     await main.tool('Bash', 'shell', '$ npm test -- rateLimit', { ms: 3200, ok: false, output: '✗ allows bursts up to capacity\n  expected 429, received 200\n1 failing, 11 passing' })
     await main.think(1600, 'The refill happens before the capacity check — off by one on the first burst.')
-    await main.tool('Edit', 'edit', 'Edit src/middleware/rateLimit.ts', { files: edit(`${root}/src/middleware/rateLimit.ts`), ms: 800 })
+    await main.tool('Edit', 'edit', 'Edit src/middleware/rateLimit.ts', { files: edit(`${root}/src/middleware/rateLimit.ts`), ms: 800, changes: claudeChanges('Edit', { file_path: `${root}/src/middleware/rateLimit.ts`, old_string: "    const b = buckets.get(key) ?? { tokens: capacity, at: now }\n    b.tokens = Math.min(capacity, b.tokens + ((now - b.at) / 60_000) * perMinute)\n    b.at = now\n    if (b.tokens < 1) return res.status(429).set('Retry-After', '1').end()", new_string: "    const b = buckets.get(key)\n    if (!b) {\n      buckets.set(key, { tokens: capacity - 1, at: now })\n      return next()\n    }\n    b.tokens = Math.min(capacity, b.tokens + ((now - b.at) / 60_000) * perMinute)\n    b.at = now\n    if (b.tokens < 1) return res.status(429).set('Retry-After', '1').end()" }) })
 
     // A permission prompt: the command sits pending until "approved".
     const install = main.start('Bash', 'shell', '$ npm install --save-dev autocannon', [], { command: 'npm install --save-dev autocannon' })
@@ -192,11 +262,11 @@ async function codexSession(emit: Emit, clock: Clock): Promise<void> {
     worker.send({ kind: 'turn.ended', outcome: 'completed' })
     main.finish(waiting, true, 'bench-runner: p95 188ms')
 
-    await main.tool('apply_patch', 'edit', 'Patch src/pipeline.rs +1', { files: [...edit(`${root}/src/pipeline.rs`), ...edit(`${root}/src/encoder.rs`)], ms: 1300 })
+    await main.tool('apply_patch', 'edit', 'Patch src/pipeline.rs +1', { files: [...edit(`${root}/src/pipeline.rs`), ...edit(`${root}/src/encoder.rs`)], ms: 1300, changes: patchChanges(PIPELINE_PATCH) })
     await main.tool('exec', 'shell', '$ cargo test', { ms: 2600, ok: round % 3 !== 1, output: round % 3 !== 1 ? 'test result: ok. 41 passed' : 'error[E0502]: cannot borrow `buf` as mutable' })
     if (round % 3 === 1) {
       await main.think(1200)
-      await main.tool('apply_patch', 'edit', 'Patch src/encoder.rs', { files: edit(`${root}/src/encoder.rs`), ms: 900 })
+      await main.tool('apply_patch', 'edit', 'Patch src/encoder.rs', { files: edit(`${root}/src/encoder.rs`), ms: 900, changes: patchChanges(ENCODER_FIX) })
       await main.tool('exec', 'shell', '$ cargo test', { ms: 2400, output: 'test result: ok. 41 passed' })
     }
     await main.tool('exec', 'shell', '$ cargo bench --bench thumbs', { ms: 3800, output: 'p50 44ms  p95 109ms' })

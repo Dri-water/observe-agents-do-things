@@ -14,6 +14,7 @@ import { homedir } from 'node:os'
 import { join, sep } from 'node:path'
 import { emptyUsage, type EventDraft, type Usage } from '@oadt/protocol'
 import { basename, clip, compactInput, contentText, firstLine, humanText, isRecord, num, str, toMs } from '../text.js'
+import { claudeChanges } from '../diff.js'
 import { describeClaudeTool } from '../tools.js'
 import type { Emit, LineParser, TranscriptAdapter } from './types.js'
 
@@ -360,6 +361,7 @@ export class ClaudeTranscriptParser implements LineParser {
           title: d.title,
           input: compactInput(input),
           files: d.files,
+          changes: claudeChanges(name, input),
           mcpServer: d.mcpServer,
         })
         if (block.type === 'server_tool_use') {

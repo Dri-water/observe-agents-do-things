@@ -1,6 +1,10 @@
 /**
  * Mission Control: a compact, IDE-style dashboard built for answering
- * "does anything need me, and what is running right now?".
+ * "does anything need me, and what is changing right now?".
+ *
+ * The main screen only holds live material: KPIs and throughput, the attention
+ * queue, session tiles, a live diff feed and the activity log. Zoomed-in
+ * session detail opens in a drawer on demand (and can be pinned).
  */
 import './mission.css'
 import {
@@ -11,69 +15,85 @@ import {
   hotFiles,
   isLive,
   openTools,
+  recentChanges,
   sessionList,
   shortPath,
   totalTokens,
   type AgentNode,
   type AttentionItem,
+  type ChangeEntry,
   type ObserverEvent,
   type SessionState,
   type ToolCallState,
   type ToolCategory,
   type WorldState,
 } from '@oadt/protocol'
+import { resolveTheme, THEME_SETTING } from '../../host/settings'
 import { h, render } from '../../shared/dom'
+import { fadeSwap, KeyedList, tickTo } from '../../shared/motion'
 import { CATEGORY, harnessInfo } from '../../shared/theme'
 import { Disposer, type ThemeName, type Visualization, type VizContext } from '../types'
-import { bucket, sparkline, stackedArea } from './charts'
+import { heartbeat, stackedArea } from './charts'
 
 export const mission: Visualization = {
   id: 'mission',
   name: 'Mission Control',
-  description: 'A compact, practical dashboard: what needs you, what is running, and how fast.',
+  description: 'A compact, practical dashboard: what needs you, what is changing, and how fast.',
+  icon: '▦',
   settings: [
+    { ...THEME_SETTING, description: 'Dark Modern, Light Modern or Gruvbox. Also in the title bar.' },
     {
       key: 'scope', label: 'Sessions shown', type: 'select', default: 'recent',
       options: [{ value: 'live', label: 'Live only' }, { value: 'recent', label: 'Live and last 3 hours' }, { value: 'all', label: 'Everything loaded' }],
     },
+    { key: 'pinDetail', label: 'Keep the detail panel open', type: 'toggle', default: false, description: 'Dock session detail on the right instead of opening it as a drawer.' },
     {
       key: 'detailTab', label: 'Default detail tab', type: 'select', default: 'activity',
-      options: [{ value: 'activity', label: 'Activity' }, { value: 'chat', label: 'Chat' }, { value: 'agents', label: 'Agents' }, { value: 'files', label: 'Files' }],
+      options: [{ value: 'activity', label: 'Activity' }, { value: 'diffs', label: 'Diffs' }, { value: 'chat', label: 'Chat' }, { value: 'agents', label: 'Agents' }, { value: 'files', label: 'Files' }],
     },
   ],
   mount,
 }
 
 type View = 'overview' | 'attention' | 'log'
-type Tab = 'activity' | 'chat' | 'agents' | 'files'
+type Tab = 'activity' | 'diffs' | 'chat' | 'agents' | 'files'
 
 const THEME_LABEL: Record<ThemeName, string> = { dark: 'Dark', light: 'Light', 'gruvbox-dark': 'Gruvbox Dark', 'gruvbox-light': 'Gruvbox Light' }
 const CATEGORIES = Object.keys(CATEGORY) as ToolCategory[]
 const ATTN_ICON: Record<AttentionItem['kind'], string> = { waiting: '⏸', errors: '✕', finished: '✓', aborted: '■', context: '◔', 'long-tool': '⧗' }
-const SPAN_MS = 15 * 60_000
+const SPAN_MAX = 15 * 60_000
 const BUCKETS = 60
+const PULSE_MS = 90_000
+const DIFF_PREVIEW = 10
 
 const TEMPLATE = `
 <div class="mc">
   <header class="mc-title">
     <div class="mc-brand"><span class="mc-logo"></span>Mission Control</div>
-    <span class="mc-attn-badge"></span>
-    <div class="mc-search"><input type="search" placeholder="Filter sessions (/)" spellcheck="false" /></div>
+    <button class="mc-attn-badge"></button>
+    <div class="mc-search"><input type="search" placeholder="Filter sessions (/)" spellcheck="false" aria-label="Filter sessions" /></div>
     <div class="mc-title-actions">
-      <button class="mc-iconbtn mc-bell" title="Desktop notifications"></button>
-      <select class="mc-theme" title="Theme"></select>
+      <button class="mc-iconbtn mc-bell"></button>
+      <select class="mc-theme" title="Theme" aria-label="Theme"></select>
     </div>
   </header>
-  <nav class="mc-act">
+  <nav class="mc-act" aria-label="Views">
     <button data-view="overview" title="Overview">▦</button>
     <button data-view="attention" title="Needs attention">⚑<span class="count" hidden></span></button>
     <button data-view="log" title="Activity log (all sessions)">≡</button>
   </nav>
   <main class="mc-main"></main>
-  <aside class="mc-detail">
+  <div class="mc-scrim"></div>
+  <aside class="mc-drawer" aria-label="Session detail">
+    <div class="mc-drawer-bar">
+      <span class="mc-drawer-title">Session</span>
+      <button class="mc-iconbtn mc-pin" title="Keep open"></button>
+      <button class="mc-iconbtn mc-close" title="Close (Esc)" aria-label="Close">×</button>
+    </div>
     <div class="mc-detail-head"></div>
     <nav class="mc-tabs">
       <button data-tab="activity">Activity</button>
+      <button data-tab="diffs">Diffs</button>
       <button data-tab="chat">Chat</button>
       <button data-tab="agents">Agents</button>
       <button data-tab="files">Files</button>
@@ -91,7 +111,7 @@ interface Tile {
   age: HTMLElement
   meta: HTMLElement
   now: HTMLElement
-  spark: HTMLCanvasElement
+  pulse: HTMLCanvasElement
   stats: HTMLElement
 }
 
@@ -101,7 +121,7 @@ function mount(root: HTMLElement, vctx: VizContext) {
   root.innerHTML = TEMPLATE
   const q = <T extends HTMLElement = HTMLElement>(sel: string) => root.querySelector(sel) as T
   const mc = q('.mc')
-  q('.mc-title-actions').append(vctx.switcher)
+  q('.mc-act').append(vctx.controls)
 
   /** Set whenever something on screen may have changed; the loop repaints and clears it. */
   let dirty = true
@@ -109,44 +129,44 @@ function mount(root: HTMLElement, vctx: VizContext) {
     view: 'overview' as View,
     tab: settings.get<string>('mission.detailTab') as Tab,
     selected: undefined as string | undefined,
+    drawerOpen: false,
     search: '',
-    expanded: undefined as string | undefined,
+    expanded: new Set<string>(),
   }
 
   // ─── Theme ────────────────────────────────────────────────────────────
   let colors: Record<string, string> = {}
-  const readColors = () => {
+  let theme: ThemeName = 'dark'
+  const themeSelect = q<HTMLSelectElement>('.mc-theme')
+  function refreshTheme(): void {
+    theme = resolveTheme(settings.get<string>('mission.theme'))
+    mc.dataset.theme = theme
+    vctx.setChromeTheme(theme)
     const cs = getComputedStyle(mc)
     const get = (n: string) => cs.getPropertyValue(n).trim()
-    colors = { grid: get('--border'), text: get('--fg-faint'), accent: get('--accent'), warn: get('--warn'), ok: get('--ok'), claude: get('--claude'), codex: get('--codex') }
+    colors = { grid: get('--border'), text: get('--fg-faint'), accent: get('--accent'), ok: get('--ok'), warn: get('--warn'), err: get('--err'), claude: get('--claude'), codex: get('--codex'), faint: get('--fg-faint') }
     for (const c of CATEGORIES) colors[c] = get(`--c-${c}`)
-  }
-  const themeSelect = q<HTMLSelectElement>('.mc-theme')
-  const applyTheme = (t: ThemeName) => {
-    mc.dataset.theme = t
-    readColors()
-    renderThemeSelect()
-    dirty = true
-  }
-  function renderThemeSelect(): void {
-    const value = settings.get<string>('theme')
+    const value = settings.get<string>('mission.theme')
     themeSelect.replaceChildren(...[['system', 'System'], ...Object.entries(THEME_LABEL)].map(([v, l]) => {
       const o = h('option', { value: v }, l!) as HTMLOptionElement
       o.selected = v === value
       return o
     }))
+    dirty = true
   }
-  themeSelect.addEventListener('change', () => settings.set('theme', themeSelect.value))
-  applyTheme(vctx.theme())
-  d.add(vctx.onTheme(applyTheme))
+  themeSelect.addEventListener('change', () => settings.set('mission.theme', themeSelect.value))
+  refreshTheme()
+  d.add(settings.on('mission.theme', refreshTheme))
+  d.listen(matchMedia('(prefers-color-scheme: light)'), 'change', refreshTheme)
 
   // ─── Live data for charts ─────────────────────────────────────────────
   const toolStarts: Array<{ ts: number; cat: ToolCategory; sid: string }> = []
   const tokenTimes: Array<{ ts: number; n: number }> = []
   for (const s of Object.values(client.world.sessions)) for (const id of s.toolOrder) {
     const t = s.tools[id]
-    if (t && t.startedAt > Date.now() - SPAN_MS) toolStarts.push({ ts: t.startedAt, cat: t.category, sid: s.id })
+    if (t && t.startedAt > Date.now() - SPAN_MAX) toolStarts.push({ ts: t.startedAt, cat: t.category, sid: s.id })
   }
+  toolStarts.sort((a, b) => a.ts - b.ts)
   const chats = new Map<string, ObserverEvent[]>()
   d.add(client.onChange((_w, events) => {
     for (const e of events) {
@@ -154,26 +174,55 @@ function mount(root: HTMLElement, vctx: VizContext) {
       if (e.kind === 'usage') tokenTimes.push({ ts: e.ts, n: e.delta.input + e.delta.output + e.delta.cacheWrite })
       if (e.kind === 'message') chats.get(e.sessionId)?.push(e)
     }
-    const cutoff = Date.now() - SPAN_MS
+    const cutoff = Date.now() - SPAN_MAX
     while (toolStarts.length && toolStarts[0]!.ts < cutoff) toolStarts.shift()
     while (tokenTimes.length && tokenTimes[0]!.ts < cutoff) tokenTimes.shift()
     dirty = true
   }))
 
+  // ─── Drawer ───────────────────────────────────────────────────────────
+
+  const pinBtn = q('.mc-pin')
+  const pinned = () => settings.get<boolean>('mission.pinDetail')
+  function applyDrawer(): void {
+    const isPinned = pinned()
+    mc.classList.toggle('pinned', isPinned)
+    mc.classList.toggle('drawer-open', !isPinned && ui.drawerOpen)
+    pinBtn.textContent = isPinned ? '⇥' : '⇤'
+    pinBtn.title = isPinned ? 'Unpin (open as a drawer)' : 'Pin to the side'
+    pinBtn.setAttribute('aria-pressed', String(isPinned))
+  }
+  function openSession(sid: string, tab?: Tab): void {
+    select(sid)
+    if (tab) setTab(tab)
+    ui.drawerOpen = true
+    applyDrawer()
+  }
+  function closeDrawer(): void {
+    ui.drawerOpen = false
+    applyDrawer()
+  }
+  pinBtn.addEventListener('click', () => settings.set('mission.pinDetail', !pinned()))
+  q('.mc-close').addEventListener('click', () => (pinned() ? settings.set('mission.pinDetail', false) : closeDrawer()))
+  q('.mc-scrim').addEventListener('click', closeDrawer)
+  d.add(settings.on('mission.pinDetail', () => { ui.drawerOpen = pinned() || ui.drawerOpen; applyDrawer() }))
+  applyDrawer()
+
   // ─── Selection & navigation ───────────────────────────────────────────
   function select(sid: string | undefined): void {
     if (ui.selected === sid) return
     ui.selected = sid
-    ui.expanded = undefined
     if (sid && !chats.has(sid)) {
       chats.set(sid, [])
       client.sessionEvents(sid).then((evs) => {
         const live = chats.get(sid) ?? []
         const seen = new Set(live.map((e) => e.seq))
         chats.set(sid, [...evs.filter((e) => e.kind === 'message' && !seen.has(e.seq)), ...live].sort((a, b) => a.seq - b.seq))
+        tabBody.dataset.key = ''
         dirty = true
       }).catch(() => { /* history is optional */ })
     }
+    tabBody.dataset.key = ''
     dirty = true
   }
   function setView(v: View): void {
@@ -181,10 +230,11 @@ function mount(root: HTMLElement, vctx: VizContext) {
     for (const b of root.querySelectorAll<HTMLElement>('.mc-act [data-view]')) b.classList.toggle('on', b.dataset.view === v)
     main.replaceChildren()
     main.dataset.key = ''
-    tiles.clear()
+    overview = undefined
     dirty = true
   }
   function setTab(t: Tab): void {
+    if (ui.tab !== t) fadeSwap(tabBody)
     ui.tab = t
     for (const b of root.querySelectorAll<HTMLElement>('.mc-tabs [data-tab]')) b.classList.toggle('on', b.dataset.tab === t)
     tabBody.dataset.key = ''
@@ -198,8 +248,7 @@ function mount(root: HTMLElement, vctx: VizContext) {
 
   const bell = q('.mc-bell')
   bell.addEventListener('click', async () => {
-    const on = settings.get<boolean>('notify.desktop')
-    if (on) return settings.set('notify.desktop', false)
+    if (settings.get<boolean>('notify.desktop')) return settings.set('notify.desktop', false)
     if ((await attention.requestPermission()) === 'granted') settings.set('notify.desktop', true)
     else vctx.openSettings('notifications')
   })
@@ -217,10 +266,13 @@ function mount(root: HTMLElement, vctx: VizContext) {
       case '/': e.preventDefault(); search.focus(); break
       case 'j': if (ids.length) select(ids[Math.min(ids.length - 1, i + 1)]); break
       case 'k': if (ids.length) select(ids[Math.max(0, i - 1)]); break
+      case 'Enter': if (ui.selected) openSession(ui.selected); break
+      case 'Escape': if (ui.drawerOpen && !pinned()) closeDrawer(); break
       case '1': setTab('activity'); break
-      case '2': setTab('chat'); break
-      case '3': setTab('agents'); break
-      case '4': setTab('files'); break
+      case '2': setTab('diffs'); break
+      case '3': setTab('chat'); break
+      case '4': setTab('agents'); break
+      case '5': setTab('files'); break
       case 'x': attention.ackAll(); break
     }
   })
@@ -236,39 +288,112 @@ function mount(root: HTMLElement, vctx: VizContext) {
       .filter((s) => !text || [s.meta.title, s.meta.project, s.meta.gitBranch, s.meta.cwd, s.harness, s.id].some((v) => v?.toLowerCase().includes(text)))
       .sort((a, b) => Number(urgent.has(b.id)) - Number(urgent.has(a.id)) || Number(isLive(b)) - Number(isLive(a)) || b.lastActivityAt - a.lastActivityAt)
   }
+  const sessionName = (s: SessionState | undefined, fallback: string) => s?.meta.title ?? s?.meta.project ?? fallback.slice(0, 8)
+  const agentName = (s: SessionState, id: string) => (id === s.rootAgentId ? 'main' : s.agents[id]?.name ?? id.slice(0, 6))
 
-  // ─── Main area ────────────────────────────────────────────────────────
+  // ─── Overview ─────────────────────────────────────────────────────────
   const main = q('.mc-main')
-  const tiles = new Map<string, Tile>()
-  let kpiEl: HTMLElement | undefined
-  let throughput: HTMLCanvasElement | undefined
-  let attnList: HTMLElement | undefined
-  let grid: HTMLElement | undefined
-  let scopeBar: HTMLElement | undefined
-  let feedWrap: HTMLElement | undefined
+  interface Overview {
+    kpi: Record<'live' | 'liveOf' | 'working' | 'needs' | 'perMin' | 'tokMin' | 'errors', HTMLElement>
+    kpiCells: Record<'needs' | 'errors' | 'live', HTMLElement>
+    throughput: HTMLCanvasElement
+    throughputLabel: HTMLElement
+    attnWrap: HTMLElement
+    attnCount: HTMLElement
+    attn: KeyedList<AttentionItem>
+    tiles: KeyedList<SessionState>
+    tileParts: Map<string, Tile>
+    scopeBtns: HTMLElement[]
+    diffs: KeyedList<ChangeEntry>
+    diffEmpty: HTMLElement
+    activity: KeyedList<{ t: ToolCallState; s: SessionState }>
+    activityEmpty: HTMLElement
+  }
+  let overview: Overview | undefined
 
-  function buildOverview(): void {
-    throughput = h('canvas') as HTMLCanvasElement
-    kpiEl = h('section.mc-kpis')
-    attnList = h('div.mc-attn-list')
-    grid = h('div.mc-grid')
-    scopeBar = h('span.grow')
-    feedWrap = h('div.mc-feed')
-    main.replaceChildren(
-      kpiEl,
-      h('section.mc-section', null, h('div.mc-section-head', null, 'Needs attention', h('span.grow'), h('button', { onclick: () => attention.ackAll(), title: 'Acknowledge everything (X)' }, 'Clear all')), attnList),
-      h('section.mc-section', null, h('div.mc-section-head', null, 'Sessions', scopeBar, ...(['live', 'recent', 'all'] as const).map((s) =>
-        h('button' + (settings.get('mission.scope') === s ? '.on' : ''), { onclick: () => settings.set('mission.scope', s), 'data-scope': s }, s === 'live' ? 'Live' : s === 'recent' ? 'Recent' : 'All'))), grid),
-      h('section.mc-section.mc-fill', null, h('div.mc-section-head', null, 'Activity', h('span.grow'), h('button', { onclick: () => setView('log'), title: 'Open the full log' }, 'Open log')), feedWrap),
-    )
+  function kpiCell(label: string, ...value: HTMLElement[]): HTMLElement {
+    return h('div.mc-kpi', null, h('div.v', null, ...value), h('div.k', null, label))
   }
 
-  function renderKpis(world: WorldState, now: number): void {
-    if (!kpiEl || !throughput) return
-    let live = 0, working = 0, errors = 0, cost = 0
+  function buildOverview(): Overview {
+    const kpi = {
+      live: h('span'), liveOf: h('span.faint'), working: h('span'), needs: h('span'), perMin: h('span'), tokMin: h('span'), errors: h('span'),
+    }
+    const kpiCells = {
+      live: kpiCell('live sessions', kpi.live, kpi.liveOf),
+      needs: kpiCell('need you', kpi.needs),
+      errors: kpiCell('errors · 10m', kpi.errors),
+    }
+    const throughput = h('canvas') as HTMLCanvasElement
+    const throughputLabel = h('span.lbl')
+    const attnList = h('div.mc-attn-list')
+    const attnCount = h('span.faint')
+    const attnWrap = h('section.mc-section.mc-attn-wrap', null,
+      h('div.mc-section-head', null, 'Needs attention', attnCount, h('span.grow'), h('button', { onclick: () => attention.ackAll(), title: 'Acknowledge everything (X)' }, 'Clear all')),
+      attnList,
+      h('div.mc-allclear', null, '✓ Nothing needs you right now'),
+    )
+    const grid = h('div.mc-grid')
+    const tileParts = new Map<string, Tile>()
+    const scopeBtns = (['live', 'recent', 'all'] as const).map((sc) =>
+      h('button', { onclick: () => settings.set('mission.scope', sc), 'data-scope': sc }, sc === 'live' ? 'Live' : sc === 'recent' ? 'Recent' : 'All'))
+    const diffList = h('div.mc-diffs')
+    const diffEmpty = h('div.mc-empty', null, 'Edits will stream in here as agents change files.')
+    const activityList = h('div.mc-rows')
+    const activityEmpty = h('div.mc-empty', null, 'No tool calls yet.')
+
+    main.replaceChildren(
+      h('section.mc-kpis', null,
+        kpiCells.live, kpiCell('agents working', kpi.working), kpiCells.needs,
+        kpiCell('tools / min', kpi.perMin), kpiCell('tokens / min', kpi.tokMin), kpiCells.errors,
+        h('div.mc-throughput', null, throughputLabel, throughput),
+      ),
+      attnWrap,
+      h('section.mc-section', null, h('div.mc-section-head', null, 'Sessions', h('span.grow'), ...scopeBtns), grid),
+      h('section.mc-split', null,
+        h('div.mc-pane', null, h('div.mc-section-head', null, 'Live diffs', h('span.grow'), h('span.faint', null, 'click a card to expand')), h('div.mc-pane-body', null, diffEmpty, diffList)),
+        h('div.mc-pane', null, h('div.mc-section-head', null, 'Activity', h('span.grow'), h('button', { onclick: () => setView('log') }, 'Open log')), h('div.mc-pane-body', null, activityEmpty, activityList)),
+      ),
+    )
+
+    const attn = new KeyedList<AttentionItem>(attnList, {
+      key: (i) => i.id,
+      create: (i) => attentionRow(i),
+      update: (el, i) => {
+        el.classList.toggle('acked', attention.isAcked(i.id))
+        el.querySelector('.age')!.textContent = formatDuration(Date.now() - i.since)
+      },
+      flashClass: 'mo-flash',
+      collapse: true,
+    })
+    const tiles = new KeyedList<SessionState>(grid, {
+      key: (s) => s.id,
+      create: (s) => tileFor(s, tileParts).el,
+      update: (_el, s) => updateTile(tileParts.get(s.id)!, s, Date.now()),
+      flashClass: 'mo-flash',
+    })
+    const diffs = new KeyedList<ChangeEntry>(diffList, {
+      key: (c) => c.key,
+      create: (c) => diffCard(c, true),
+      update: (el, c) => updateDiffCard(el, c),
+      flashClass: 'mo-flash',
+      collapse: true,
+    })
+    const activity = new KeyedList<{ t: ToolCallState; s: SessionState }>(activityList, {
+      key: (r) => r.t.id,
+      create: (r) => activityRow(r),
+      update: (el, r) => updateActivityRow(el, r),
+      flashClass: 'mo-flash',
+      collapse: true,
+    })
+    return { kpi, kpiCells, throughput, throughputLabel, attnWrap, attnCount, attn, tiles, tileParts, scopeBtns, diffs, diffEmpty, activity, activityEmpty }
+  }
+
+  function renderOverview(o: Overview, world: WorldState, now: number): void {
+    // KPIs tick between values.
+    let live = 0, working = 0, errors = 0
     for (const s of Object.values(world.sessions)) {
       if (isLive(s)) live++
-      cost += s.meta.costUsd ?? 0
       for (const a of Object.values(s.agents)) if (a.status === 'working') working++
       for (const id of s.toolOrder) {
         const t = s.tools[id]
@@ -278,63 +403,97 @@ function mount(root: HTMLElement, vctx: VizContext) {
     const needs = attention.open().filter((a) => a.severity !== 'low').length
     const perMin = toolStarts.filter((t) => t.ts > now - 60_000).length
     const tokMin = tokenTimes.filter((t) => t.ts > now - 60_000).reduce((n, t) => n + t.n, 0)
-    const cells: Array<[string, string, string]> = [
-      [`${live}/${Object.keys(world.sessions).length}`, 'live sessions', live ? 'ok' : ''],
-      [String(working), 'agents working', ''],
-      [String(needs), 'need you', needs ? 'warn' : ''],
-      [String(perMin), 'tools / min', ''],
-      [formatCount(tokMin), 'tokens / min', ''],
-      [String(errors), 'errors · 10m', errors ? 'err' : ''],
-    ]
-    render(kpiEl, cells.map((c) => c.join('|')).join('/') + (cost ? `|${cost.toFixed(2)}` : ''), () => [
-      ...cells.map(([v, k, cls]) => h('div.mc-kpi' + (cls ? `.${cls}` : ''), null, h('div.v', null, v), h('div.k', null, k))),
-      h('div.mc-throughput', null, h('span.lbl', null, `Tool calls · last 15 min${cost ? ` · $${cost.toFixed(2)} reported` : ''}`), throughput!),
-    ])
-    // The window grows with the data (2 → 15 min), so the chart is lively from the first minute.
-    const span = Math.min(SPAN_MS, Math.max(2 * 60_000, now - (toolStarts[0]?.ts ?? now)))
-    const bucketSec = Math.round(span / BUCKETS / 1000)
-    const series = CATEGORIES.map((c) => ({ values: bucket(toolStarts.filter((t) => t.cat === c).map((t) => t.ts), now, span, BUCKETS), color: colors[c] ?? colors.accent! }))
-    stackedArea(throughput, series, { grid: colors.grid!, text: colors.text!, label: (m) => `peak ${m} per ${bucketSec}s` })
-    const lbl = throughput.parentElement?.querySelector('.lbl')
-    if (lbl) lbl.textContent = `Tool calls · last ${Math.round(span / 60_000)} min${cost ? ` · $${cost.toFixed(2)} reported` : ''}`
+    tickTo(o.kpi.live, live)
+    o.kpi.liveOf.textContent = `/${Object.keys(world.sessions).length}`
+    tickTo(o.kpi.working, working)
+    tickTo(o.kpi.needs, needs)
+    tickTo(o.kpi.perMin, perMin)
+    tickTo(o.kpi.tokMin, tokMin, formatCount)
+    tickTo(o.kpi.errors, errors)
+    o.kpiCells.live.className = 'mc-kpi' + (live ? ' ok' : '')
+    o.kpiCells.needs.className = 'mc-kpi' + (needs ? ' warn' : '')
+    o.kpiCells.errors.className = 'mc-kpi' + (errors ? ' err' : '')
+
+    // Attention collapses to a single line when there is nothing to do.
+    const open = attention.open()
+    o.attnWrap.classList.toggle('is-empty', open.length === 0)
+    o.attnCount.textContent = open.length ? ` · ${open.length}` : ''
+    o.attn.sync(open)
+
+    const sessions = visibleSessions(world)
+    if (!ui.selected && sessions[0]) select(sessions[0].id)
+    o.tiles.sync(sessions)
+    for (const b of o.scopeBtns) b.classList.toggle('on', b.dataset.scope === settings.get('mission.scope'))
+
+    const ids = sessions.map((s) => s.id)
+    const changes = recentChanges(world, 30, ids)
+    o.diffEmpty.hidden = changes.length > 0
+    o.diffs.sync(changes)
+
+    const rows = ids.flatMap((id) => sessionRows(world.sessions[id]!, 40))
+      .sort((a, b) => Number(b.t.endedAt === undefined) - Number(a.t.endedAt === undefined) || b.t.startedAt - a.t.startedAt).slice(0, 60)
+    o.activityEmpty.hidden = rows.length > 0
+    o.activity.sync(rows)
   }
 
-  function attentionRow(item: AttentionItem, world: WorldState, now: number, acked: boolean): HTMLElement {
-    const s = world.sessions[item.sessionId]
-    return h('div.mc-attn.' + item.severity + (acked ? '.acked' : ''), { onclick: () => { select(item.sessionId); if (item.kind === 'finished') setTab('chat') }, title: item.detail ?? '' },
+  // Canvases redraw every frame so they scroll smoothly.
+  function drawCanvases(o: Overview, world: WorldState, now: number): void {
+    const age = now - (toolStarts[0]?.ts ?? now)
+    const span = Math.min(SPAN_MAX, Math.max(2 * 60_000, Math.ceil(age / 60_000) * 60_000))
+    const bucketMs = span / BUCKETS
+    const end = Math.ceil(now / bucketMs) * bucketMs
+    const start = end - span
+    const xs = Array.from({ length: BUCKETS }, (_, i) => ((start + (i + 1) * bucketMs) - (now - span)) / span)
+    const series = CATEGORIES.map((c) => {
+      const values = new Array<number>(BUCKETS).fill(0)
+      for (const t of toolStarts) {
+        if (t.cat !== c || t.ts < start) continue
+        values[Math.min(BUCKETS - 1, Math.floor((t.ts - start) / bucketMs))]!++
+      }
+      return { values, color: colors[c] ?? colors.accent! }
+    })
+    stackedArea(o.throughput, series, { grid: colors.grid!, text: colors.text!, xs, label: (m) => `peak ${m} per ${Math.round(bucketMs / 1000)}s` })
+    const cost = Object.values(world.sessions).reduce((n, s) => n + (s.meta.costUsd ?? 0), 0)
+    const label = `Tool calls · last ${Math.round(span / 60_000)} min${cost ? ` · $${cost.toFixed(2)} reported` : ''}`
+    if (o.throughputLabel.textContent !== label) o.throughputLabel.textContent = label
+
+    for (const [sid, t] of o.tileParts) {
+      const s = world.sessions[sid]
+      if (!s || !t.el.isConnected) continue
+      const beats = toolStarts.filter((x) => x.sid === sid && x.ts > now - PULSE_MS).map((x) => ({ ts: x.ts, color: colors[x.cat] ?? colors.accent! }))
+      const line = s.harness === 'codex' ? colors.codex! : s.harness === 'claude-code' ? colors.claude! : colors.accent!
+      heartbeat(t.pulse, beats, now, PULSE_MS, { line, idle: colors.faint!, active: s.status === 'working' || s.status === 'waiting' })
+    }
+  }
+
+  // ─── Attention rows ───────────────────────────────────────────────────
+  function attentionRow(item: AttentionItem): HTMLElement {
+    const s = client.world.sessions[item.sessionId]
+    return h('div.mc-attn.' + item.severity, { onclick: () => openSession(item.sessionId, item.kind === 'finished' ? 'chat' : item.kind === 'errors' ? 'activity' : undefined), title: item.detail ?? '' },
       h('span.ico', null, ATTN_ICON[item.kind]),
-      h('div.txt', null, h('b', null, item.title), h('span.sess', null, s?.meta.title ?? s?.meta.project ?? item.sessionId.slice(0, 8)), item.detail ? h('span.det', null, item.detail.replace(/\s+/g, ' ')) : ''),
-      h('span.age', null, formatDuration(now - item.since)),
-      h('div.acts', null, acked
-        ? h('button', { onclick: (e: Event) => { e.stopPropagation(); attention.unack(item.id) }, title: 'Restore' }, '↺')
-        : h('button', { onclick: (e: Event) => { e.stopPropagation(); attention.ack(item.id) }, title: 'Acknowledge' }, '✓')),
+      h('div.txt', null, h('b', null, item.title), h('span.sess', null, sessionName(s, item.sessionId)), item.detail ? h('span.det', null, item.detail.replace(/\s+/g, ' ')) : ''),
+      h('span.age', null, formatDuration(Date.now() - item.since)),
+      h('div.acts', null,
+        h('button', { onclick: (e: Event) => { e.stopPropagation(); attention.ack(item.id) }, title: 'Acknowledge' }, '✓')),
     )
   }
 
-  function renderAttention(el: HTMLElement, world: WorldState, now: number, includeAcked: boolean): void {
-    const items = includeAcked ? attention.all() : attention.open()
-    const key = items.map((i) => `${i.id}${attention.isAcked(i.id) ? 'a' : ''}`).join(',') + `|${Math.floor(now / 1000)}`
-    render(el, key, () => items.length
-      ? items.map((i) => attentionRow(i, world, now, attention.isAcked(i.id)))
-      : [h('div.mc-empty.ok', null, 'Nothing needs you right now.')])
-  }
-
-  function tileFor(s: SessionState): Tile {
-    let t = tiles.get(s.id)
-    if (t) return t
+  // ─── Session tiles ────────────────────────────────────────────────────
+  function tileFor(s: SessionState, parts: Map<string, Tile>): Tile {
     const dot = h('span.dot'), title = h('span.ttl'), badge = h('span.badge'), age = h('span.faint.mono')
-    const meta = h('div.r2'), now = h('div.now'), spark = h('canvas.spark') as HTMLCanvasElement, stats = h('div.r5')
-    const el = h('div.mc-tile', { onclick: () => select(s.id) }, h('div.r1', null, dot, title, badge, age), meta, now, spark, stats)
-    t = { el, dot, title, badge, age, meta, now, spark, stats }
-    tiles.set(s.id, t)
+    const meta = h('div.r2'), now = h('div.now'), pulse = h('canvas.pulse') as HTMLCanvasElement, stats = h('div.r5')
+    const el = h('div.mc-tile', { onclick: () => openSession(s.id), tabindex: '0' }, h('div.r1', null, dot, title, badge, age), meta, now, pulse, stats)
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter') openSession(s.id) })
+    const t = { el, dot, title, badge, age, meta, now, pulse, stats }
+    parts.set(s.id, t)
     return t
   }
 
-  function updateTile(t: Tile, s: SessionState, now: number, drawSpark: boolean): void {
+  function updateTile(t: Tile, s: SessionState, now: number): void {
     const hc = harnessInfo(s.harness)
-    t.el.className = `mc-tile st-${s.status}${s.id === ui.selected ? ' sel' : ''}${openTools(s).length ? ' running' : ''}`
+    t.el.className = `mc-tile st-${s.status}${s.id === ui.selected && (ui.drawerOpen || pinned()) ? ' sel' : ''}${openTools(s).length ? ' running' : ''}`
     t.dot.className = `dot ${s.status}`
-    t.title.textContent = s.meta.title ?? s.meta.project ?? s.id.slice(0, 8)
+    t.title.textContent = sessionName(s, s.id)
     t.badge.className = `badge ${s.harness}`
     t.badge.textContent = hc.short
     t.age.textContent = formatAgo(s.lastActivityAt, now).replace(' ago', '')
@@ -343,29 +502,21 @@ function mount(root: HTMLElement, vctx: VizContext) {
     const waiting = Object.values(s.agents).find((a) => a.status === 'waiting')
     const running = openTools(s).filter((x) => x.category !== 'agent')
     const tool = running[running.length - 1]
-    let nowKey: string
-    let nowNodes: () => Array<Node | string>
     if (waiting) {
-      nowKey = `w|${waiting.statusSince}|${Math.floor(now / 1000)}`
-      nowNodes = () => [h('span', null, '⏸'), h('span.t', null, waiting.statusReason ?? 'waiting for approval'), h('span.el', null, formatDuration(now - waiting.statusSince))]
       t.now.className = 'now waiting'
+      render(t.now, `w|${waiting.statusSince}|${Math.floor(now / 1000)}`, () => [h('span', null, '⏸'), h('span.t', null, waiting.statusReason ?? 'waiting for approval'), h('span.el', null, formatDuration(now - waiting.statusSince))])
     } else if (tool) {
-      const c = CATEGORY[tool.category]
-      nowKey = `t|${tool.id}|${Math.floor(now / 1000)}|${running.length}`
-      nowNodes = () => [h('span.chip', { style: `--c:var(--c-${tool.category})` }, c?.label ?? tool.category), h('span.t', null, tool.title), h('span.el', null, `${formatDuration(now - tool.startedAt)}${running.length > 1 ? ` +${running.length - 1}` : ''}`)]
       t.now.className = 'now'
+      render(t.now, `t|${tool.id}|${Math.floor(now / 1000)}|${running.length}`, () => [
+        h('span.chip', { style: `--c:var(--c-${tool.category})` }, CATEGORY[tool.category]?.label ?? tool.category),
+        h('span.t', null, tool.title),
+        h('span.el', null, `${formatDuration(now - tool.startedAt)}${running.length > 1 ? ` +${running.length - 1}` : ''}`),
+      ])
     } else {
       const thinking = Object.values(s.agents).some((a) => a.thinking)
       const label = thinking ? 'thinking…' : s.status === 'working' ? 'working' : s.turn.outcome === 'completed' && s.turn.endedAt ? `finished ${formatAgo(s.turn.endedAt, now)}` : `idle ${formatAgo(s.lastActivityAt, now)}`
-      nowKey = `i|${label}`
-      nowNodes = () => [h('span.t.dim', null, label)]
       t.now.className = 'now'
-    }
-    render(t.now, nowKey, nowNodes)
-
-    if (drawSpark) {
-      const times = toolStarts.filter((x) => x.sid === s.id).map((x) => x.ts)
-      sparkline(t.spark, bucket(times, now, 10 * 60_000, 40), s.harness === 'codex' ? colors.codex! : s.harness === 'claude-code' ? colors.claude! : colors.accent!, { baseline: colors.grid })
+      render(t.now, `i|${label}`, () => [h('span.t.dim', null, label)])
     }
 
     const agents = Object.values(s.agents)
@@ -381,59 +532,88 @@ function mount(root: HTMLElement, vctx: VizContext) {
     ])
   }
 
-  function renderGrid(world: WorldState, now: number, drawSpark: boolean): void {
-    if (!grid) return
-    const list = visibleSessions(world)
-    if (!ui.selected && list[0]) select(list[0].id)
-    const els: HTMLElement[] = []
-    for (const s of list) {
-      const t = tileFor(s)
-      updateTile(t, s, now, drawSpark || !t.el.isConnected)
-      els.push(t.el)
-    }
-    const current = [...grid.children]
-    if (current.length !== els.length || current.some((c, i) => c !== els[i])) {
-      grid.replaceChildren(...(els.length ? els : [h('div.mc-empty', null, ui.search ? 'No sessions match.' : 'No sessions yet. Start Claude Code or Codex.')]))
-      // Canvases just (re)attached need a draw at their real size.
-      for (const s of list) updateTile(tiles.get(s.id)!, s, now, true)
-    }
-    for (const id of [...tiles.keys()]) if (!list.some((s) => s.id === id)) tiles.delete(id)
-    if (scopeBar?.parentElement) {
-      for (const b of scopeBar.parentElement.querySelectorAll<HTMLElement>('[data-scope]')) b.classList.toggle('on', b.dataset.scope === settings.get('mission.scope'))
+  // ─── Diff cards ───────────────────────────────────────────────────────
+  function diffCard(c: ChangeEntry, interactive: boolean): HTMLElement {
+    const s = client.world.sessions[c.sessionId]
+    const body = h('div.mc-diff-body')
+    const more = h('button.mc-diff-more')
+    const card = h('div.mc-diff', { 'data-op': c.change.op },
+      h('div.mc-diff-head', { onclick: interactive ? () => toggleDiff(c.key) : undefined },
+        h('span.chip', { style: `--c:var(--c-${c.change.op === 'write' ? 'write' : c.change.op === 'delete' ? 'shell' : 'edit'})` }, c.change.op),
+        h('code.path', { title: c.change.path }, shortPath(c.change.path, 3)),
+        h('span.add', null, `+${c.change.added}`), h('span.del', null, `−${c.change.removed}`),
+        h('span.who', null, `${s ? agentName(s, c.agentId) : c.agentId} · ${sessionName(s, c.sessionId)}`),
+        h('span.age.faint'),
+        interactive ? h('button.mc-open', { onclick: (e: Event) => { e.stopPropagation(); openSession(c.sessionId, 'diffs') }, title: 'Open session' }, '↗') : '',
+      ),
+      body,
+      more,
+    )
+    if (interactive) more.addEventListener('click', () => toggleDiff(c.key))
+    else more.remove()
+    fillDiff(card, c, !interactive || ui.expanded.has(c.key))
+    updateDiffCard(card, c)
+    return card
+  }
+
+  function fillDiff(card: HTMLElement, c: ChangeEntry, full: boolean): void {
+    const lines = full ? c.change.lines : c.change.lines.slice(0, DIFF_PREVIEW)
+    const body = card.querySelector('.mc-diff-body') as HTMLElement
+    body.replaceChildren(...lines.map((l) => {
+      const kind = l[0] === '+' ? 'add' : l[0] === '-' ? 'del' : l[0] === '@' ? 'gap' : 'ctx'
+      return h('div.ln.' + kind, null, kind === 'gap' ? '⋯' : l.slice(1) || ' ')
+    }))
+    if (c.change.op === 'delete' && !lines.length) body.replaceChildren(h('div.ln.gap', null, 'file deleted'))
+    const hidden = c.change.lines.length - lines.length
+    const more = card.querySelector('.mc-diff-more') as HTMLElement | null
+    if (!more) return
+    more.hidden = !(hidden > 0 || (full && c.change.lines.length > DIFF_PREVIEW))
+    more.textContent = hidden > 0 ? `${hidden} more line${hidden === 1 ? '' : 's'}${c.change.truncated ? ' (truncated)' : ''}` : 'show less'
+  }
+
+  function toggleDiff(key: string): void {
+    const full = !ui.expanded.has(key)
+    if (full) ui.expanded.add(key)
+    else ui.expanded.delete(key)
+    const card = overview?.diffs.element(key)
+    const entry = card ? recentChanges(client.world, 60).find((c) => c.key === key) : undefined
+    if (card && entry) {
+      const from = card.offsetHeight
+      fillDiff(card, entry, full)
+      const to = card.offsetHeight
+      card.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: 220, easing: 'cubic-bezier(.2,.8,.2,1)' })
     }
   }
 
-  // ─── Log table ────────────────────────────────────────────────────────
-  function logTable(rows: Array<{ t: ToolCallState; s: SessionState }>, now: number, withSession: boolean): HTMLElement {
-    const head = h('tr', null,
-      h('th', { style: 'width:74px' }, 'Time'),
-      withSession ? h('th', { style: 'width:22%' }, 'Session') : '',
-      h('th', { style: 'width:18%' }, 'Agent'),
-      h('th', { style: 'width:64px' }, 'Kind'),
-      h('th', null, 'Call'),
-      h('th', { style: 'width:70px' }, 'Took'),
+  function updateDiffCard(card: HTMLElement, c: ChangeEntry): void {
+    card.classList.toggle('running', c.tool.endedAt === undefined)
+    card.classList.toggle('failed', c.tool.ok === false)
+    const age = card.querySelector('.age') as HTMLElement
+    const label = c.tool.endedAt === undefined ? 'applying…' : c.tool.ok === false ? 'failed' : formatAgo(c.ts).replace(' ago', '')
+    if (age.textContent !== label) age.textContent = label
+  }
+
+  // ─── Activity rows ────────────────────────────────────────────────────
+  function activityRow(r: { t: ToolCallState; s: SessionState }): HTMLElement {
+    const { t, s } = r
+    return h('div.mc-row', { onclick: () => openSession(s.id, 'activity'), title: t.title },
+      h('span.time', null, new Date(t.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })),
+      h('span.chip', { style: `--c:var(--c-${t.category})` }, CATEGORY[t.category]?.label ?? t.category),
+      h('span.title', null, t.title),
+      h('span.who', null, `${agentName(s, t.agentId)} · ${sessionName(s, s.id)}`),
+      h('span.dur'),
     )
-    const body: HTMLElement[] = []
-    for (const { t, s } of rows) {
-      const running = t.endedAt === undefined
-      const agent = t.agentId === s.rootAgentId ? 'main' : s.agents[t.agentId]?.name ?? t.agentId.slice(0, 6)
-      body.push(h('tr.row' + (running ? '.running' : '') + (t.ok === false ? '.failed' : ''), { onclick: () => { ui.expanded = ui.expanded === t.id ? undefined : t.id; tabBody.dataset.key = ''; if (ui.view === 'log') main.dataset.key = ''; dirty = true } },
-        h('td.time', null, new Date(t.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })),
-        withSession ? h('td', null, s.meta.title ?? s.meta.project ?? s.id.slice(0, 8)) : '',
-        h('td', null, agent),
-        h('td', null, h('span.chip', { style: `--c:var(--c-${t.category})` }, CATEGORY[t.category]?.label ?? t.category)),
-        h('td.title', { title: t.title }, t.title),
-        h('td.dur.st', null, running ? h('span', null, h('span.spin'), ' ', formatDuration(now - t.startedAt)) : t.ok === false ? `✕ ${formatDuration(t.durationMs ?? 0)}` : formatDuration(t.durationMs ?? 0)),
-      ))
-      if (ui.expanded === t.id) {
-        const input = t.input === undefined ? '' : typeof t.input === 'string' ? t.input : JSON.stringify(t.input, null, 2)
-        body.push(h('tr.expand', null, h('td', { colspan: withSession ? 6 : 5 },
-          input ? h('pre', null, input) : '',
-          t.output ? h('pre' + (t.ok === false ? '.bad' : ''), null, t.output) : h('div.faint', null, running ? 'Running…' : 'No output recorded.'),
-        )))
-      }
-    }
-    return h('table.mc-log', null, h('thead', null, head), h('tbody', null, ...body))
+  }
+
+  function updateActivityRow(el: HTMLElement, r: { t: ToolCallState; s: SessionState }): void {
+    const t = r.t
+    const running = t.endedAt === undefined
+    el.classList.toggle('running', running)
+    el.classList.toggle('failed', t.ok === false)
+    const dur = el.querySelector('.dur') as HTMLElement
+    render(dur, running ? `r|${Math.floor((Date.now() - t.startedAt) / 1000)}` : `d|${t.ok}`, () => running
+      ? [h('span.spin'), ' ', formatDuration(Date.now() - t.startedAt)]
+      : [t.ok === false ? `✕ ${formatDuration(t.durationMs ?? 0)}` : formatDuration(t.durationMs ?? 0)])
   }
 
   function sessionRows(s: SessionState, limit: number): Array<{ t: ToolCallState; s: SessionState }> {
@@ -443,47 +623,97 @@ function mount(root: HTMLElement, vctx: VizContext) {
     return [...running, ...done].slice(0, limit).map((t) => ({ t, s }))
   }
 
+  // ─── Full-page views ──────────────────────────────────────────────────
+  function logTable(rows: Array<{ t: ToolCallState; s: SessionState }>, now: number, withSession: boolean): HTMLElement {
+    const body: HTMLElement[] = []
+    for (const { t, s } of rows) {
+      const running = t.endedAt === undefined
+      body.push(h('tr.row' + (running ? '.running' : '') + (t.ok === false ? '.failed' : ''), { onclick: () => { toggleRow(t.id) } },
+        h('td.time', null, new Date(t.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })),
+        withSession ? h('td', null, sessionName(s, s.id)) : '',
+        h('td', null, agentName(s, t.agentId)),
+        h('td', null, h('span.chip', { style: `--c:var(--c-${t.category})` }, CATEGORY[t.category]?.label ?? t.category)),
+        h('td.title', { title: t.title }, t.title),
+        h('td.dur.st', null, running ? h('span', null, h('span.spin'), ' ', formatDuration(now - t.startedAt)) : t.ok === false ? `✕ ${formatDuration(t.durationMs ?? 0)}` : formatDuration(t.durationMs ?? 0)),
+      ))
+      if (ui.expanded.has(t.id)) {
+        const input = t.input === undefined ? '' : typeof t.input === 'string' ? t.input : JSON.stringify(t.input, null, 2)
+        body.push(h('tr.expand', null, h('td', { colspan: withSession ? 6 : 5 },
+          input ? h('pre', null, input) : '',
+          t.output ? h('pre' + (t.ok === false ? '.bad' : ''), null, t.output) : h('div.faint', null, running ? 'Running…' : 'No output recorded.'),
+        )))
+      }
+    }
+    return h('table.mc-log', null,
+      h('thead', null, h('tr', null,
+        h('th', { style: 'width:74px' }, 'Time'),
+        withSession ? h('th', { style: 'width:22%' }, 'Session') : '',
+        h('th', { style: 'width:16%' }, 'Agent'),
+        h('th', { style: 'width:64px' }, 'Kind'),
+        h('th', null, 'Call'),
+        h('th', { style: 'width:70px' }, 'Took'),
+      )),
+      h('tbody', null, ...body))
+  }
+  function toggleRow(id: string): void {
+    if (ui.expanded.has(id)) ui.expanded.delete(id)
+    else ui.expanded.add(id)
+    tabBody.dataset.key = ''
+    main.dataset.key = ''
+    dirty = true
+  }
+
   function renderLogView(world: WorldState, now: number): void {
     const rows = visibleSessions(world).flatMap((s) => sessionRows(s, 120))
       .sort((a, b) => Number(b.t.endedAt === undefined) - Number(a.t.endedAt === undefined) || b.t.startedAt - a.t.startedAt).slice(0, 400)
-    const key = `log|${world.seq}|${ui.expanded}|${Math.floor(now / 1000)}`
-    render(main, key, () => [h('section.mc-section', null, h('div.mc-section-head', null, `Activity · all sessions`, h('span.grow'), h('span.faint', null, `${rows.length} calls`)), logTable(rows, now, true))])
+    render(main, `log|${world.seq}|${ui.expanded.size}|${Math.floor(now / 1000)}`, () => [h('section.mc-section', null, h('div.mc-section-head', null, 'Activity · all sessions', h('span.grow'), h('span.faint', null, `${rows.length} calls`)), logTable(rows, now, true))])
   }
 
-  function renderFeed(world: WorldState, now: number): void {
-    if (!feedWrap) return
-    const rows = visibleSessions(world).flatMap((s) => sessionRows(s, 60))
-      .sort((a, b) => Number(b.t.endedAt === undefined) - Number(a.t.endedAt === undefined) || b.t.startedAt - a.t.startedAt).slice(0, 80)
-    render(feedWrap, `feed|${world.seq}|${ui.expanded}|${Math.floor(now / 1000)}`, () => [rows.length ? logTable(rows, now, true) : h('div.mc-empty', null, 'No tool calls yet.')])
-  }
-
-  function renderAttentionView(world: WorldState, now: number): void {
-    if (!attnList || !attnList.isConnected) {
-      attnList = h('div.mc-attn-list')
+  let attnView: KeyedList<AttentionItem> | undefined
+  function renderAttentionView(): void {
+    if (!attnView || !main.firstChild) {
+      const list = h('div.mc-attn-list')
       main.replaceChildren(h('section.mc-section', null,
         h('div.mc-section-head', null, 'Needs attention', h('span.grow'),
           h('button', { onclick: () => attention.ackAll() }, 'Acknowledge all'),
           h('button', { onclick: () => vctx.openSettings('notifications') }, 'Notification settings…')),
-        attnList))
+        list))
+      attnView = new KeyedList<AttentionItem>(list, {
+        key: (i) => i.id,
+        create: (i) => {
+          const row = attentionRow(i)
+          const acts = row.querySelector('.acts')!
+          acts.replaceChildren(h('button', { onclick: (e: Event) => { e.stopPropagation(); attention.isAcked(i.id) ? attention.unack(i.id) : attention.ack(i.id) }, title: 'Acknowledge or restore' }, '✓ / ↺'))
+          return row
+        },
+        update: (el, i) => {
+          el.classList.toggle('acked', attention.isAcked(i.id))
+          el.querySelector('.age')!.textContent = formatDuration(Date.now() - i.since)
+        },
+        collapse: true,
+      })
     }
-    renderAttention(attnList, world, now, true)
+    const items = attention.all()
+    attnView.sync(items)
+    if (!items.length && !main.querySelector('.mc-empty')) main.firstElementChild!.append(h('div.mc-empty.ok', null, 'Nothing needs you right now.'))
+    if (items.length) main.querySelector('.mc-empty')?.remove()
   }
 
-  // ─── Detail panel ─────────────────────────────────────────────────────
+  // ─── Drawer content ───────────────────────────────────────────────────
   const detailHead = q('.mc-detail-head')
   const tabBody = q('.mc-tab-body')
 
   function renderDetail(world: WorldState, now: number): void {
     const s = ui.selected ? world.sessions[ui.selected] : undefined
+    q('.mc-drawer-title').textContent = s ? sessionName(s, s.id) : 'Session'
     if (!s) {
       render(detailHead, 'none', () => [h('div.mc-noselect', null, 'Select a session')])
       render(tabBody, 'none', () => [])
       return
     }
     const fill = s.contextTokens && s.contextWindow ? Math.round((s.contextTokens / s.contextWindow) * 100) : undefined
-    render(detailHead, `${s.id}|${s.status}|${s.counts.tools}|${s.counts.turns}|${s.counts.toolErrors}|${formatCount(totalTokens(s.usage))}|${s.meta.costUsd}|${fill}|${s.meta.title}|${Math.floor((now - s.statusSince) / 1000)}`, () => [
-      h('div.ttl', null, h('span.dot.' + s.status), h('span', null, s.meta.title ?? s.meta.project ?? s.id)),
-      h('div.dim', null, `${harnessInfo(s.harness).label} · ${s.status} for ${formatDuration(now - s.statusSince)}`),
+    render(detailHead, `${s.id}|${s.status}|${s.counts.tools}|${s.counts.turns}|${s.counts.toolErrors}|${formatCount(totalTokens(s.usage))}|${s.meta.costUsd}|${fill}|${Math.floor((now - s.statusSince) / 1000)}`, () => [
+      h('div.dim', null, h('span.dot.' + s.status), ` ${harnessInfo(s.harness).label} · ${s.status} for ${formatDuration(now - s.statusSince)}`),
       h('div.faint.mono', { title: s.meta.cwd ?? '' }, [s.meta.cwd ? shortPath(s.meta.cwd, 3) : '', s.meta.gitBranch, s.meta.model].filter(Boolean).join(' · ')),
       h('div.mc-facts', null,
         fact(s.counts.turns, 'turns'), fact(s.counts.tools, 'tools'), fact(s.counts.toolErrors, 'failed'),
@@ -491,12 +721,16 @@ function mount(root: HTMLElement, vctx: VizContext) {
     ])
 
     if (ui.tab === 'activity') {
-      render(tabBody, `a|${s.id}|${s.counts.tools}|${openTools(s).length}|${ui.expanded}|${Math.floor(now / 1000)}|${s.toolOrder[s.toolOrder.length - 1]}`, () => [logTable(sessionRows(s, 200), now, false)])
+      render(tabBody, `a|${s.id}|${s.counts.tools}|${openTools(s).length}|${ui.expanded.size}|${Math.floor(now / 1000)}|${s.toolOrder[s.toolOrder.length - 1]}`, () => [logTable(sessionRows(s, 200), now, false)])
+    } else if (ui.tab === 'diffs') {
+      const changes = recentChanges(world, 80, [s.id])
+      render(tabBody, `d|${s.id}|${changes.length}|${changes[0]?.key}|${changes[0]?.tool.endedAt}`, () => [h('div.mc-diffs.static', null, ...(changes.length ? changes.map((c) => diffCard(c, false)) : [h('div.mc-empty', null, 'No edits in this session yet.')]))])
     } else if (ui.tab === 'chat') {
       const msgs = (chats.get(s.id) ?? []).filter((e): e is Extract<ObserverEvent, { kind: 'message' }> => e.kind === 'message').slice(-120)
       const atBottom = tabBody.scrollHeight - tabBody.scrollTop - tabBody.clientHeight < 40
-      const changed = tabBody.dataset.key !== `c|${s.id}|${msgs.length}`
-      render(tabBody, `c|${s.id}|${msgs.length}`, () => [h('div.mc-chat', null, ...(msgs.length ? msgs.map((m) => {
+      const key = `c|${s.id}|${msgs.length}`
+      const changed = tabBody.dataset.key !== key
+      render(tabBody, key, () => [h('div.mc-chat', null, ...(msgs.length ? msgs.map((m) => {
         const who = m.agentId === s.rootAgentId ? (m.role === 'user' ? 'you' : 'main') : `${s.agents[m.agentId]?.name ?? 'agent'}${m.role === 'agent' ? ' · task' : ''}`
         return h('div.mc-msg.' + m.role, null, h('div.who', null, h('span', null, who), h('span', null, new Date(m.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }))), m.text)
       }) : [h('div.mc-empty', null, 'No messages yet.')]))])
@@ -526,13 +760,15 @@ function mount(root: HTMLElement, vctx: VizContext) {
   }
 
   // ─── Chrome: title badge, activity bar, status bar ────────────────────
+  const statusBar = q('.mc-status')
   function renderChrome(world: WorldState, now: number): void {
     const open = attention.open()
     const urgent = open.filter((a) => a.severity === 'high').length
     const needs = open.filter((a) => a.severity !== 'low').length
     const badge = q('.mc-attn-badge')
     badge.className = 'mc-attn-badge' + (needs ? (urgent ? ' pulse' : ' medium') : ' none')
-    badge.textContent = needs ? `⚑ ${needs} need${needs === 1 ? 's' : ''} you` : '✓ All clear'
+    const badgeText = needs ? `⚑ ${needs} need${needs === 1 ? 's' : ''} you` : '✓ All clear'
+    if (badge.textContent !== badgeText) badge.textContent = badgeText
     const count = q('.mc-act .count')
     count.hidden = !needs
     count.textContent = String(needs)
@@ -540,49 +776,46 @@ function mount(root: HTMLElement, vctx: VizContext) {
     bell.textContent = on ? '🔔' : '🔕'
     bell.classList.toggle('on', on)
     bell.title = on ? 'Desktop notifications on (click to turn off)' : 'Desktop notifications off (click to turn on)'
+    bell.setAttribute('aria-label', bell.title)
 
     const live = Object.values(world.sessions).filter(isLive).length
     const working = Object.values(world.sessions).reduce((n, s) => n + Object.values(s.agents).filter((a) => a.status === 'working').length, 0)
-    const status = q('.mc-status')
-    status.classList.toggle('offline', client.status !== 'live')
+    statusBar.classList.toggle('offline', client.status !== 'live')
     const tokMin = tokenTimes.filter((t) => t.ts > now - 60_000).reduce((n, t) => n + t.n, 0)
-    render(status, `${client.status}|${live}|${working}|${Object.keys(world.sessions).length}|${formatCount(tokMin)}|${vctx.theme()}|${on}|${settings.get('notify.sound')}`, () => [
+    render(statusBar, `${client.status}|${live}|${working}|${Object.keys(world.sessions).length}|${formatCount(tokMin)}|${theme}|${on}|${settings.get('notify.sound')}`, () => [
       h('span', null, client.status === 'live' ? '● live' : `○ ${client.status}`),
       h('span', null, `${live} live / ${Object.keys(world.sessions).length} sessions`),
       h('span', null, `${working} agents working`),
       h('span.grow'),
       h('span', null, `${formatCount(tokMin)} tok/min`),
       h('button', { onclick: () => vctx.openSettings('notifications'), title: 'Notification settings' }, `${on ? '🔔' : '🔕'}${settings.get('notify.sound') ? ' ♪' : ''}`),
-      h('button', { onclick: () => vctx.openSettings('appearance'), title: 'Theme' }, THEME_LABEL[vctx.theme()]),
-      h('button', { onclick: () => vctx.openSettings(), title: 'Settings (Ctrl+,)' }, '⚙ Settings'),
+      h('button', { onclick: () => vctx.openSettings('mission'), title: 'Mission Control settings' }, THEME_LABEL[theme]),
     ])
   }
 
   // ─── Loop ─────────────────────────────────────────────────────────────
-  let lastFrame = 0
-  let lastSpark = 0
+  let lastDom = 0
+  let lastCanvas = 0
   d.add(attention.subscribe(() => { dirty = true }))
   d.loop((t) => {
-    // Repaint text twice a second (timers) or when data changes; sparklines once a second.
-    if (!dirty && t - lastFrame < 500) return
-    dirty = false
-    lastFrame = t
     const now = Date.now()
     const world = client.world
-    const drawSpark = t - lastSpark > 1000
-    if (drawSpark) lastSpark = t
     if (ui.view === 'overview') {
-      if (!grid || !grid.isConnected) buildOverview()
-      renderKpis(world, now)
-      renderAttention(attnList!, world, now, false)
-      renderGrid(world, now, drawSpark)
-      renderFeed(world, now)
-    } else if (ui.view === 'attention') {
-      renderAttentionView(world, now)
-    } else {
-      renderLogView(world, now)
+      if (!overview) overview = buildOverview()
+      // Canvases at ~30fps so the charts glide.
+      if (t - lastCanvas > 33) {
+        lastCanvas = t
+        drawCanvases(overview, world, now)
+      }
     }
-    renderDetail(world, now)
+    // DOM twice a second (timers), or as soon as data changes.
+    if (!dirty && t - lastDom < 500) return
+    dirty = false
+    lastDom = t
+    if (ui.view === 'overview') renderOverview(overview!, world, now)
+    else if (ui.view === 'attention') renderAttentionView()
+    else renderLogView(world, now)
+    if (ui.drawerOpen || pinned()) renderDetail(world, now)
     renderChrome(world, now)
   })
 
@@ -590,7 +823,7 @@ function mount(root: HTMLElement, vctx: VizContext) {
   setTab(ui.tab)
   return {
     destroy: () => { d.dispose(); root.replaceChildren() },
-    focusSession: (sid: string) => { setView('overview'); select(sid) },
+    focusSession: (sid: string) => { setView('overview'); openSession(sid) },
   }
 }
 
@@ -603,3 +836,4 @@ function flatten(node: AgentNode, depth = 0, out: Array<{ a: AgentNode; depth: n
   for (const c of node.childNodes) flatten(c, depth + 1, out)
   return out
 }
+

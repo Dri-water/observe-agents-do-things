@@ -17,20 +17,18 @@ export interface VizContext {
   /** Live connection: `client.world`, `client.onChange`, `client.on('event')`, `client.sessionEvents()`… */
   client: ObserverClient
   /**
-   * The host's controls (visualization switcher and settings button). Put them
-   * wherever they fit your layout. If you don't attach them during `mount`, the
-   * host floats them in a corner.
+   * The host's controls (the settings button). Put them wherever they fit your
+   * layout. If you don't attach them during `mount`, the host floats them in a corner.
    */
-  switcher: HTMLElement
+  controls: HTMLElement
   /** Persisted settings. Your own settings live under `<viz id>.<key>`. */
   settings: Settings
-  /** The resolved app theme, and a subscription for changes. */
-  theme(): ThemeName
-  onTheme(fn: (theme: ThemeName) => void): () => void
+  /** Tell the host how to style its own UI (the settings dialog) to match you. */
+  setChromeTheme(theme: ThemeName): void
   /** What needs the user (shared with notifications), including acknowledgements. */
   attention: AttentionService
-  /** Open the settings page, optionally at a section (e.g. your viz id). */
-  openSettings(section?: string): void
+  /** Open settings: 'notifications', or your own id for your visualization's page. */
+  openSettings(page?: string): void
 }
 
 export interface VizInstance {
@@ -43,9 +41,11 @@ export interface VizInstance {
 export interface Visualization {
   id: string
   name: string
-  /** One line for the switcher menu. */
+  /** One line shown in Settings › Visualizations. */
   description: string
-  /** Settings shown on the settings page under this visualization. Keys are relative (`labels` → `<id>.labels`). */
+  /** A single character shown next to the name in settings. */
+  icon?: string
+  /** Settings on this visualization's page in Settings. Keys are relative (`labels` → `<id>.labels`). */
   settings?: SettingDef[]
   mount(root: HTMLElement, ctx: VizContext): VizInstance
 }

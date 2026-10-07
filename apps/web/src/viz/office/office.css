@@ -42,11 +42,7 @@
 }
 .of-btn:hover { transform: translateY(-1px); }
 .of-btn.on { background: #fff1a8; box-shadow: 0 5px 14px #2a1f4a22, inset 0 -3px 0 #f1d66b; }
-.of .viz-switcher-button { background: var(--of-card); color: var(--of-ink); border: 0; box-shadow: 0 5px 14px #2a1f4a22, inset 0 -3px 0 #f0e2cf; font-weight: 600; padding: 7px 12px; }
-.of .viz-switcher-menu { background: var(--of-card); border-color: var(--of-line); }
-.of .viz-switcher-item { color: var(--of-ink); }
-.of .viz-switcher-item span { color: var(--of-muted); }
-.of .viz-switcher-item.on { background: #fff1a8; box-shadow: inset 3px 0 0 #ffb547; }
+.of .oadt-settings-button { background: var(--of-card); color: var(--of-ink); border: 0; box-shadow: 0 5px 14px #2a1f4a22, inset 0 -3px 0 #f0e2cf; font-weight: 600; padding: 7px 12px; border-radius: 12px; }
 
 .of-rooms { position: absolute; left: 12px; bottom: 12px; display: flex; gap: 6px; flex-wrap: wrap; max-width: calc(100% - 380px); }
 .of-room {

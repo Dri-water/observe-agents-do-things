@@ -14,7 +14,7 @@ Keep using Claude Code and Codex exactly as you do now: the CLI, the IDE extensi
 
 ![Agent Office: each session is a room, each agent a little worker. The lead wears a headset, subagents walk in as new hires, your prompts arrive as paper airplanes](docs/images/office-day.png)
 
-Visualizations are plugins over the same data. Three ship today: Constellation, the Agent Office, and **Mission Control**, a compact IDE-style dashboard (Dark, Light and Gruvbox themes) built around what needs you. Switch with the corner button, the `V` key, `?viz=mission` or the settings page (`Ctrl+,`), which also holds the theme and opt-in desktop notifications. Each one owns its entire view: layout, rendering, input and HUD. The office maps spawns to new hires walking in, permission prompts to raised hands, file work to papers flying to the filing cabinet, and finished turns to confetti. See **[docs/VISUALIZATIONS.md](docs/VISUALIZATIONS.md)**, including how to write your own.
+Visualizations are plugins over the same data. Three ship today: Constellation, the Agent Office, and **Mission Control**, a compact IDE-style dashboard (Dark, Light and Gruvbox themes) built around what needs you. Pick one in Settings › Visualizations (the `⚙` button, or `Ctrl+,`), where each also has its own options page; Settings also holds the opt-in desktop notifications. Each one owns its entire view: layout, rendering, input and HUD. The office maps spawns to new hires walking in, permission prompts to raised hands, file work to papers flying to the filing cabinet, and finished turns to confetti. See **[docs/VISUALIZATIONS.md](docs/VISUALIZATIONS.md)**, including how to write your own.
 
 ## Why
 

@@ -165,6 +165,7 @@ test('codex: normalises rollouts and rebuilds the agent tree across threads', ()
   const patch = Object.values(s.tools).find((x) => x.category === 'edit')!
   assert.equal(patch.title, 'Patch src/import.rs +1')
   assert.deepEqual(patch.files.map((f) => f.op), ['edit', 'write'])
+  assert.deepEqual(patch.changes?.map((c) => [c.path, c.added, c.removed]), [['src/import.rs', 1, 1], ['src/cache.rs', 1, 0]])
   const child = s.agents[CHILD]!
   assert.equal(child.parentId, ROOT)
   assert.equal(child.name, 'Bench')

@@ -13,9 +13,9 @@ What it does **not** do is parse transcripts, derive agent status or link
 subagents. That all happens in the core, and the visualization reads it from
 the live `WorldState` and the event stream.
 
-Switch visualizations from the switcher, with the `V` key, with `?viz=<id>` in
-the URL, or on the settings page (`⚙`, or `Ctrl+,`). The settings page also
-holds the theme, notification preferences and each visualization's own options.
+Choose which visualization to show in **Settings › Visualizations** (the `⚙` button in every
+visualization, or `Ctrl+,`). Each visualization has its own page there for its options, such as
+Mission Control's theme. `?viz=<id>` in the URL and the `V` key also switch.
 
 ## Built in
 
@@ -87,10 +87,13 @@ export const ticker: Visualization = {
   id: 'ticker',
   name: 'Ticker',
   description: 'One line per session, like a stock ticker.',
-  mount(root, { client, switcher }) {
+  icon: '≡',
+  settings: [{ key: 'compact', label: 'Compact rows', type: 'toggle', default: false }],
+  mount(root, { client, controls, settings }) {
     const d = new Disposer()
     root.innerHTML = '<div class="ticker"><header></header><ul></ul></div>'
-    root.querySelector('header')!.append(switcher) // or leave it out and the host floats it
+    root.querySelector('header')!.append(controls) // the settings button; leave it out and the host floats it
+    root.classList.toggle('compact', settings.get<boolean>('ticker.compact'))
     const list = root.querySelector('ul')!
     d.add(client.onChange((world) => {
       list.replaceChildren(...sessionList(world).map((s) => {
@@ -108,8 +111,9 @@ The rules:
 
 1. **Everything you need is on `ctx`.** `ctx.client` is the live data,
    `ctx.settings` stores your options (declare them in `settings` on the
-   visualization and they appear on the settings page), `ctx.theme()` and
-   `ctx.onTheme()` give the app theme, and `ctx.attention` shares what needs the
+   visualization and they get their own page under Settings › Visualizations),
+   `ctx.setChromeTheme()` makes the settings dialog match your look, and
+   `ctx.attention` shares what needs the
    user, including acknowledgements. On the client, `client.world` is the live
    `WorldState`. `client.onChange((world, events) => …)` fires at most once
    per microtask with the new events. `client.sessionEvents(id)` gives history.

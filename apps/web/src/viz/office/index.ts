@@ -28,6 +28,7 @@ export const office: Visualization = {
   id: 'office',
   name: 'Agent Office',
   description: 'A cosy isometric office: each session is a room, each agent a little worker at a desk.',
+  icon: '⌂',
   settings: [
     { key: 'labels', label: 'Name tags', type: 'toggle', default: true, description: 'Show name tags under workers. Shortcut: L.' },
     {
@@ -62,7 +63,8 @@ function mount(root: HTMLElement, vctx: VizContext) {
   root.innerHTML = TEMPLATE
   const q = <T extends HTMLElement = HTMLElement>(sel: string) => root.querySelector(sel) as T
   const client = vctx.client
-  q('.of-actions').prepend(vctx.switcher)
+  q('.of-actions').prepend(vctx.controls)
+  vctx.setChromeTheme('light')
 
   const canvas = q<HTMLCanvasElement>('.of-canvas')
   const ctx = canvas.getContext('2d')!

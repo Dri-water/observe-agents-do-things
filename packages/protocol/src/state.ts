@@ -11,6 +11,7 @@ import {
   emptyUsage,
   isSafeKey,
   type AgentStatus,
+  type FileChange,
   type FileOp,
   type FileRef,
   type Harness,
@@ -29,6 +30,7 @@ export interface ToolCallState {
   title: string
   input?: unknown
   files: FileRef[]
+  changes?: FileChange[]
   mcpServer?: string
   startedAt: number
   endedAt?: number
@@ -444,6 +446,7 @@ export function applyEvent(world: WorldState, e: ObserverEvent, limits: Projecti
         title: e.title,
         input: e.input,
         files: e.files ?? [],
+        changes: e.changes,
         mcpServer: e.mcpServer,
         startedAt: e.ts,
       }

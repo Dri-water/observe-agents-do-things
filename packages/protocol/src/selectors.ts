@@ -2,7 +2,7 @@
  * Small, pure helpers for reading a WorldState. Frontends can use these or
  * ignore them — they never mutate state.
  */
-import type { ToolCategory, Usage } from './events.js'
+import type { FileChange, ToolCategory, Usage } from './events.js'
 import type { AgentState, FileStats, SessionState, ToolCallState, WorldState } from './state.js'
 
 const STATUS_ORDER = { waiting: 0, working: 1, idle: 2, ended: 3 } as const
@@ -135,4 +135,30 @@ export function formatAgo(ts: number, now = Date.now()): string {
 export function shortPath(p: string, segments = 2): string {
   const parts = p.replace(/\\/g, '/').split('/').filter(Boolean)
   return parts.slice(-segments).join('/') || p
+}
+
+export interface ChangeEntry {
+  /** Stable key: tool call id plus the change's index within it. */
+  key: string
+  sessionId: string
+  agentId: string
+  tool: ToolCallState
+  change: FileChange
+  ts: number
+}
+
+/** File edits across the given sessions (or all), newest first. */
+export function recentChanges(world: WorldState, limit = 50, sessionIds?: Iterable<string>): ChangeEntry[] {
+  const ids = sessionIds ? [...sessionIds] : Object.keys(world.sessions)
+  const out: ChangeEntry[] = []
+  for (const id of ids) {
+    const s = world.sessions[id]
+    if (!s) continue
+    for (const toolId of s.toolOrder) {
+      const t = s.tools[toolId]
+      if (!t?.changes?.length) continue
+      t.changes.forEach((change, i) => out.push({ key: `${s.id}:${t.id}:${i}`, sessionId: s.id, agentId: t.agentId, tool: t, change, ts: t.startedAt }))
+    }
+  }
+  return out.sort((a, b) => b.ts - a.ts).slice(0, limit)
 }

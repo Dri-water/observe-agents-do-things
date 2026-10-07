@@ -32,6 +32,20 @@ export const TOOL_CATEGORIES: readonly ToolCategory[] = [
 
 export type FileOp = 'read' | 'edit' | 'write' | 'delete' | 'search'
 
+/**
+ * A file change made by a tool call, as unified-diff lines. Each line starts with
+ * '+', '-', ' ' (context) or '@' (a gap between hunks).
+ */
+export interface FileChange {
+  path: string
+  op: 'edit' | 'write' | 'delete'
+  added: number
+  removed: number
+  lines: string[]
+  /** True when lines were cut to keep events small. */
+  truncated?: boolean
+}
+
 export interface FileRef {
   /** Path as the agent referenced it (absolute when the harness provides one). */
   path: string
@@ -133,6 +147,8 @@ export type EventBody =
       title: string
       input?: unknown
       files?: FileRef[]
+      /** File edits this call makes, when the harness records them (Edit/Write, apply_patch). */
+      changes?: FileChange[]
       mcpServer?: string
     }
   | {
