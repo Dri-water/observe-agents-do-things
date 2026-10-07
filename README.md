@@ -1,6 +1,29 @@
-# observe-agents-do-things
+<p align="center">
+  <img src="docs/images/logo.svg" width="220" alt="">
+</p>
 
-**Watch your coding agents work: live, visual, read-only.**
+<h1 align="center">observe-agents-do-things</h1>
+
+<p align="center">
+  <b>Watch your coding agents work: live, visual, read-only.</b><br>
+  A live dashboard for Claude Code and Codex that sits beside the apps you already use.<br>
+  No hooks, no wrappers, no API keys.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Dri-water/observe-agents-do-things/actions/workflows/ci.yml"><img src="https://github.com/Dri-water/observe-agents-do-things/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/node-%E2%89%A5%2020.11-339933?logo=nodedotjs&logoColor=white" alt="Node 20.11 or newer">
+  <img src="https://img.shields.io/badge/core%20dependencies-0-brightgreen" alt="No runtime dependencies in the core">
+  <img src="https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Codex-d97757" alt="Works with Claude Code and Codex">
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="docs/VISUALIZATIONS.md">Visualizations</a> ·
+  <a href="#build-your-own-frontend">Build your own frontend</a> ·
+  <a href="docs/API.md">API</a>
+</p>
 
 Keep using Claude Code and Codex exactly as you do now: the CLI, the IDE extensions or the desktop apps. `oadt` sits beside them, tails the transcripts they already write, and turns them into one clean live event stream. A visual frontend renders that stream. You can also build your own frontend on top of it in a few lines.
 
@@ -21,33 +44,6 @@ https://github.com/user-attachments/assets/6bf8c1ef-9c59-4247-a0a8-3441ba648cc5
 <sub>Rooms, profile cards, the intercom, the front desk and the night shift.</sub>
 
 Visualizations are plugins over the same data. Two ship today: **Mission Control** (the default), a compact IDE-style dashboard (Dark, Light and Gruvbox themes) built around what needs you, and the **Agent Office**. Pick one in Settings › Visualizations (the `⚙` button, or `Ctrl+,`), where each also has its own options page; Settings also holds the opt-in desktop notifications. Each one owns its entire view: layout, rendering, input and HUD. The office maps spawns to new hires walking in, permission prompts to raised hands, file work to papers flying to the filing cabinet, and finished turns to confetti. See **[docs/VISUALIZATIONS.md](docs/VISUALIZATIONS.md)**, including how to write your own.
-
-## Why
-
-Agent visualisers tend to *be* the harness, or to install themselves into it. This project does neither:
-
-- **Zero setup in your agents.** No hooks, no settings edits, no wrappers, no API keys. It only reads files.
-- **Use whatever app you like.** Claude Code CLI, the VS Code and JetBrains extensions, the Claude desktop app, the Codex CLI and Codex Desktop all write transcripts that `oadt` picks up within a second.
-- **Logic and pixels are separate.** All detection, normalisation and state derivation lives in the core. Frontends get a small typed protocol, plus a pure function that folds events into state. The bundled UI is just one consumer, and the [examples](examples/) include a terminal dashboard, a notifier and a 60-line HTML page.
-
-## Features
-
-- **Swappable visualizations.** Each visualization is a plugin that defines its whole view; the core only provides data. Two ship today: *Mission Control* (the default) and *Agent Office*. Adding one is a single module plus one line to register it.
-- **Agents with a face.** Every agent gets a blob buddy, drawn by [blobatar](https://github.com/Alain00/blobatar), that types while it edits, peers around while it searches, hops with a "!" when it needs your approval and dozes off when idle. What it acts out comes from `sessionActivity` / `agentActivity` in the protocol, so any frontend can use the same signal.
-- **Subagents in both harnesses.** Claude Code `Agent`/`Task` subagents are linked through their `meta.json` sidecars. Codex `spawn_agent` threads are rebuilt into one tree across separate rollout files.
-- **Tells you when you're needed.** A shared attention model (in the protocol, so every frontend agrees) covers approvals waiting, finished turns, failure streaks, nearly full context and long-running tools. Optional desktop notifications, a chime and a tab-title count work in every visualization.
-- **Knows when you're needed.** Sessions move between *working*, *waiting* and *idle*. *Waiting* means a tool has been pending with no transcript activity, which is almost always a permission prompt. *Idle* means the turn ended.
-- **Many sessions at once.** Every session across projects and harnesses side by side. Open one for the full picture: every tool call with its input and output, diffs, the conversation, the agent tree, files touched, tokens, context fill and reported cost.
-- **Huge transcripts are fine.** A byte-level, UTF-8-safe tailer reads the head plus a bounded tail, so multi-hundred-MB rollouts load in milliseconds.
-- **Replay.** `oadt replay <transcript.jsonl>` replays any recorded session in compressed real time.
-- **Bring your own agent.** `POST /api/ingest` accepts protocol events, so your own agent can show up next to Claude and Codex.
-- **Private by default.** Binds to loopback and rejects foreign `Host` headers (DNS rebinding) and foreign origins. Requires a token when exposed. Optional `--redact content|strict` modes strip text before anything is served.
-- **Tiny.** No runtime dependencies in the core, server or client. The web UI, with both visualizations, is about 75 KB gzipped (JS and CSS), uses vanilla TypeScript and canvas, and makes no external network requests.
-
-<table><tr>
-<td width="72%"><img src="docs/images/mission-drawer.png" alt="A session opened in the drawer: the main agent and each subagent with its own buddy, what it is doing and how many tools it has run"></td>
-<td width="28%"><img src="docs/images/mission-mobile.png" alt="Mission Control on a phone"></td>
-</tr><tr><td>Open any session for its activity, diffs, chat, agents and files.</td><td>Works on a phone too.</td></tr></table>
 
 ## Quick start
 
@@ -74,6 +70,32 @@ docker compose up -d --build   # container 'observe-agents-do-things', restarts 
 ```
 
 This mounts `~/.claude` and `~/.codex` read-only, publishes the UI on `127.0.0.1:4545` only, and keeps the last 12 hours of history (`OADT_SINCE`). Inside a container, change detection falls back to polling, because bind mounts don't forward file-change events. Updates still arrive within about a second.
+
+## Why
+
+Agent visualisers tend to *be* the harness, or to install themselves into it. This project does neither:
+
+- **Zero setup in your agents.** No hooks, no settings edits, no wrappers, no API keys. It only reads files.
+- **Use whatever app you like.** Claude Code CLI, the VS Code and JetBrains extensions, the Claude desktop app, the Codex CLI and Codex Desktop all write transcripts that `oadt` picks up within a second.
+- **Logic and pixels are separate.** All detection, normalisation and state derivation lives in the core. Frontends get a small typed protocol, plus a pure function that folds events into state. The bundled UI is just one consumer, and the [examples](examples/) include a terminal dashboard, a notifier and a 60-line HTML page.
+
+## Features
+
+- **Swappable visualizations.** Each visualization is a plugin that defines its whole view; the core only provides data. Two ship today: *Mission Control* (the default) and *Agent Office*. Adding one is a single module plus one line to register it.
+- **Agents with a face.** Every agent gets a blob buddy, drawn by [blobatar](https://github.com/Alain00/blobatar), that types while it edits, peers around while it searches, hops with a "!" when it needs your approval and dozes off when idle. What it acts out comes from `sessionActivity` / `agentActivity` in the protocol, so any frontend can use the same signal.
+- **Subagents in both harnesses.** Claude Code `Agent`/`Task` subagents are linked through their `meta.json` sidecars. Codex `spawn_agent` threads are rebuilt into one tree across separate rollout files.
+- **Tells you when you're needed.** Sessions move between *working*, *waiting* (a tool pending with no transcript activity, almost always a permission prompt) and *idle*. A shared attention model, in the protocol so every frontend agrees, flags approvals waiting, finished turns, failure streaks, nearly full context and long-running tools. Optional desktop notifications, a chime and a tab-title count work in every visualization.
+- **Many sessions at once.** Every session across projects and harnesses side by side. Open one for the full picture: every tool call with its input and output, diffs, the conversation, the agent tree, files touched, tokens, context fill and reported cost.
+- **Huge transcripts are fine.** A byte-level, UTF-8-safe tailer reads the head plus a bounded tail, so multi-hundred-MB rollouts load in milliseconds.
+- **Replay.** `oadt replay <transcript.jsonl>` replays any recorded session in compressed real time.
+- **Bring your own agent.** `POST /api/ingest` accepts protocol events, so your own agent can show up next to Claude and Codex.
+- **Private by default.** Binds to loopback and rejects foreign `Host` headers (DNS rebinding) and foreign origins. Requires a token when exposed. Optional `--redact content|strict` modes strip text before anything is served.
+- **Tiny.** No runtime dependencies in the core, server or client. The web UI, with both visualizations, is about 75 KB gzipped (JS and CSS), uses vanilla TypeScript and canvas, and makes no external network requests.
+
+<table><tr>
+<td width="72%"><img src="docs/images/mission-drawer.png" alt="A session opened in the drawer: the main agent and each subagent with its own buddy, what it is doing and how many tools it has run"></td>
+<td width="28%"><img src="docs/images/mission-mobile.png" alt="Mission Control on a phone"></td>
+</tr><tr><td>Open any session for its activity, diffs, chat, agents and files.</td><td>Works on a phone too.</td></tr></table>
 
 ## How it works
 
