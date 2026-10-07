@@ -24,13 +24,15 @@
     "test": "npm run build:packages && node scripts/test.mjs",
     "typecheck": "tsc -b packages/protocol packages/core packages/client packages/react packages/server && npm run typecheck --workspace apps/web && npm run typecheck --workspace examples/react-dashboard",
     "clean": "node scripts/clean.mjs",
-    "build:examples": "npm run build --workspace examples/react-dashboard"
+    "build:examples": "npm run build --workspace examples/react-dashboard",
+    "build:cli": "npm run build && node scripts/build-cli.mjs"
   },
   "engines": {
     "node": ">=20.11"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "esbuild": "^0.25.12",
     "typescript": "^5.7.2"
   }
 }

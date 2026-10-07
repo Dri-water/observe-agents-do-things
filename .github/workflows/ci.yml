@@ -38,3 +38,9 @@ jobs:
         run: |
           node packages/server/dist/cli.js --version
           node packages/server/dist/cli.js sessions --since 1h
+      - name: Build and smoke test the npm package
+        shell: bash
+        run: |
+          node scripts/build-cli.mjs
+          node packages/cli/dist/cli.js --version
+          (cd packages/cli && npm pack --dry-run)

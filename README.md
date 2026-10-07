@@ -277,6 +277,7 @@ Transcripts contain your code and your conversations, so `oadt` is careful with 
 npm run dev            # API in demo mode + Vite with hot reload on :5175
 npm run dev -- --real  # same, against your real transcripts
 npm test               # unit + end-to-end tests (node:test)
+npm run build:cli      # the standalone npm package in packages/cli (one bundled file + the UI)
 ```
 
 ## Credits

@@ -1,0 +1,34 @@
+{
+  "name": "observe-agents-do-things",
+  "version": "0.1.0",
+  "description": "Watch Claude Code and Codex agents work in real time: a read-only observer with a live dashboard. Run it with npx.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "observe-agents-do-things": "./dist/cli.js",
+    "oadt": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "ui"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Dri-water/observe-agents-do-things.git"
+  },
+  "homepage": "https://github.com/Dri-water/observe-agents-do-things#readme",
+  "bugs": "https://github.com/Dri-water/observe-agents-do-things/issues",
+  "keywords": [
+    "claude-code",
+    "codex",
+    "ai-agents",
+    "coding-agents",
+    "observability",
+    "dashboard",
+    "visualization",
+    "developer-tools"
+  ]
+}
