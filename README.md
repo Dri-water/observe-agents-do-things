@@ -4,17 +4,25 @@
 
 Keep using Claude Code and Codex exactly as you do now: the CLI, the IDE extensions or the desktop apps. `oadt` sits beside them, tails the transcripts they already write, and turns them into one clean live event stream. A visual frontend renders that stream. You can also build your own frontend on top of it in a few lines.
 
-![A Claude Code session: the main agent with Explore, security-review and docs subagents fanned out around it, tool calls in flight, files orbiting, and the inspector showing tokens, context fill and cost](docs/images/claude-session.png)
+![Mission Control: a blob buddy per session acting out what its agent is doing, the attention queue, live diffs streaming in, and every tool call beside them](docs/images/mission.png)
 
 <sub>Demo mode (`oadt --demo`). Everything you see is simulated. No real transcripts are used in this repository.</sub>
 
+Every agent gets a little blob buddy that acts out what it is doing right now:
+
+![Buddies for each activity: thinking, reading, searching, editing, writing, running a command, browsing, delegating, planning, using a tool, asking you, needs approval, hit an error, done, interrupted, idle and asleep](docs/images/buddies.png)
+
 ---
+
+### …or as a constellation
+
+![A Claude Code session: the main agent with Explore, security-review and docs subagents fanned out around it, tool calls in flight, files orbiting, and the inspector showing tokens, context fill and cost](docs/images/claude-session.png)
 
 ### …or as a cosy isometric office
 
 ![Agent Office: each session is a room, each agent a little worker. The lead wears a headset, subagents walk in as new hires, your prompts arrive as paper airplanes](docs/images/office-day.png)
 
-Visualizations are plugins over the same data. Three ship today: Constellation, the Agent Office, and **Mission Control**, a compact IDE-style dashboard (Dark, Light and Gruvbox themes) built around what needs you. Pick one in Settings › Visualizations (the `⚙` button, or `Ctrl+,`), where each also has its own options page; Settings also holds the opt-in desktop notifications. Each one owns its entire view: layout, rendering, input and HUD. The office maps spawns to new hires walking in, permission prompts to raised hands, file work to papers flying to the filing cabinet, and finished turns to confetti. See **[docs/VISUALIZATIONS.md](docs/VISUALIZATIONS.md)**, including how to write your own.
+Visualizations are plugins over the same data. Three ship today: **Mission Control** (the default), a compact IDE-style dashboard (Dark, Light and Gruvbox themes) built around what needs you; Constellation; and the Agent Office. Pick one in Settings › Visualizations (the `⚙` button, or `Ctrl+,`), where each also has its own options page; Settings also holds the opt-in desktop notifications. Each one owns its entire view: layout, rendering, input and HUD. The office maps spawns to new hires walking in, permission prompts to raised hands, file work to papers flying to the filing cabinet, and finished turns to confetti. See **[docs/VISUALIZATIONS.md](docs/VISUALIZATIONS.md)**, including how to write your own.
 
 ## Why
 
@@ -26,7 +34,8 @@ Agent visualisers tend to *be* the harness, or to install themselves into it. Th
 
 ## Features
 
-- **Swappable visualizations.** Each visualization is a plugin that defines its whole view; the core only provides data. Two ship today, *Constellation* and *Agent Office*. Adding one is a single module plus one line to register it.
+- **Swappable visualizations.** Each visualization is a plugin that defines its whole view; the core only provides data. Three ship today: *Mission Control* (the default), *Constellation* and *Agent Office*. Adding one is a single module plus one line to register it.
+- **Agents with a face.** Every agent gets a blob buddy, drawn by [blobatar](https://github.com/Alain00/blobatar), that types while it edits, peers around while it searches, hops with a "!" when it needs your approval and dozes off when idle. What it acts out comes from `sessionActivity` / `agentActivity` in the protocol, so any frontend can use the same signal.
 - **Live constellation view.** Agents are glowing nodes. Subagents branch off the tool call that spawned them. Tool calls fly out as color-coded satellites, and the files each agent touches orbit as heat-mapped tiles. Particles show prompts, results and inter-agent messages as they happen.
 - **Subagents in both harnesses.** Claude Code `Agent`/`Task` subagents are linked through their `meta.json` sidecars. Codex `spawn_agent` threads are rebuilt into one tree across separate rollout files.
 - **Tells you when you're needed.** A shared attention model (in the protocol, so every frontend agrees) covers approvals waiting, finished turns, failure streaks, nearly full context and long-running tools. Optional desktop notifications, a chime and a tab-title count work in every visualization.
@@ -256,6 +265,8 @@ npm test               # unit + end-to-end tests (node:test)
 ## Credits
 
 This project was inspired by [agent-flow](https://github.com/patoles/agent-flow) by Simon Patole (Apache-2.0), a VS Code extension that visualises Claude Code orchestration. Reading its source taught me several hard edge cases, including inline `progress` records, redacted thinking blocks, injected-prompt prefixes and timer-based permission detection. `observe-agents-do-things` is an independent implementation with a different goal: a standalone, harness-agnostic observer service that exposes a protocol any frontend can consume. No code was copied.
+
+The buddies are drawn by [blobatar](https://github.com/Alain00/blobatar) by Alain (MIT), used as a dependency of the web app. The activity-driven poses, motion and props are this project's.
 
 ## License
 

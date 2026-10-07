@@ -211,7 +211,14 @@
 .mc.drawer-open .mc-scrim { background: #0003; pointer-events: auto; }
 .mc-drawer-bar { display: flex; align-items: center; gap: 4px; height: 30px; padding: 0 6px 0 12px; border-bottom: 1px solid var(--border); }
 .mc-drawer-title { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mc-detail-head { padding: 6px 10px 6px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 3px; }
+.mc-detail-head { padding: 8px 10px 6px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: flex-start; }
+.mc-hero { padding: 6px 6px 0 2px; }
+.mc-detail-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.mc-mood { font-weight: 600; font-size: 13px; }
+.mc-mood.act-waiting, .mc-mood.act-asking { color: var(--warn); }
+.mc-mood.act-failed, .mc-mood.act-aborted { color: var(--err); }
+.mc-mood.act-finished { color: var(--ok); }
+.mc-mood.act-idle, .mc-mood.act-sleeping { color: var(--fg-dim); }
 .mc-detail-head .ttl { font-weight: 600; font-size: 13px; display: flex; gap: 6px; align-items: center; min-width: 0; }
 .mc-detail-head .ttl span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mc-facts { display: grid; grid-template-columns: repeat(6, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); margin-top: 4px; }
@@ -229,7 +236,8 @@
 .mc-msg.user { border-left: 3px solid var(--accent); }
 .mc-msg.assistant { border-left: 3px solid var(--ok); }
 .mc-msg.agent { border-left: 3px solid var(--c-agent); }
-.mc-agents .ag { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 6px; align-items: center; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.mc-agents .ag { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; column-gap: 8px; align-items: center; padding: 5px 8px; border-bottom: 1px solid var(--border); }
+.mc-agents .ag .bb { grid-row: span 2; }
 .mc-agents .ag .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mc-agents .ag .cur { grid-column: 2 / -1; font: 11px var(--mono); color: var(--fg-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mc-agents .ag .num { font: 11px var(--mono); color: var(--fg-dim); }
@@ -328,3 +336,17 @@
   .mc-drawer, .mc-scrim, .mc.drawer-open .mc-drawer { transition: none; }
   .mo-flash, .mc-tile.running::after, .dot.working, .dot.waiting, .mc-attn-badge.pulse, .spin { animation: none; }
 }
+
+/* ─── Buddies ──────────────────────────────────────────────────────── */
+.mc { --bb-bubble: var(--bg-raised); --bb-ink: var(--fg); --bb-line: var(--border-strong); --bb-warn: var(--warn); --bb-err: var(--err); --bb-ok: var(--warn); --bb-accent: var(--info); }
+.mc-tile .hd { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.mc-tile .me { flex: none; padding: 4px 6px 0 2px; }
+.mc-tile .info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.mc-tile .r6 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.mc-tile .r6 .r5 { flex: 1; min-width: 0; }
+.mc-tile .crew { display: flex; align-items: center; gap: 1px; font: 11px var(--mono); color: var(--fg-dim); }
+.mc-tile .crew:empty { display: none; }
+.mc-tile .crew .bb { animation: mc-crew-in .35s cubic-bezier(.3, 1.5, .5, 1); }
+@keyframes mc-crew-in { from { transform: scale(0); } }
+.bb-face { display: inline-block; vertical-align: -3px; margin-right: 4px; border-radius: 50%; }
+@media (prefers-reduced-motion: reduce) { .mc-tile .crew .bb { animation: none; } }

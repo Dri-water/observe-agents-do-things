@@ -96,6 +96,13 @@ Any new activity puts an agent and its session back to `working`. Only events
 newer than the last turn end can do that, so late-arriving history never
 "revives" a finished session.
 
+For a finer-grained signal, `agentActivity(session, agent, now)` and
+`sessionActivity(session, now)` fold status, the newest in-flight tool, a
+just-failed call and the turn outcome into one word: `thinking`, `reading`,
+`searching`, `editing`, `writing`, `running`, `browsing`, `delegating`,
+`planning`, `tooling`, `asking`, `waiting`, `failed`, `finished`, `aborted`,
+`idle` or `sleeping`. Mission Control's buddies are driven by it.
+
 ## Versioning
 
 `PROTOCOL_VERSION` (currently `1`) is sent in the stream's `hello`. New

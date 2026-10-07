@@ -21,8 +21,8 @@ Mission Control's theme. `?viz=<id>` in the URL and the `V` key also switch.
 
 | | |
 |---|---|
+| **Mission Control** (`mission`, the default) | A compact IDE-style dashboard: what needs you, what is running, and how fast, with a blob buddy per agent. Themeable. See below. |
 | **Constellation** (`constellation`) | Agents as glowing nodes with subagents in a radial tree, tool calls as satellites, files in orbit. Swimlane timeline, live feed and an inspector for every session, agent, tool and file. |
-| **Mission Control** (`mission`) | A compact IDE-style dashboard: what needs you, what is running, and how fast. Themeable. See below. |
 | **Agent Office** (`office`) | A cute isometric office. Each session is a room and each agent a little worker. See below. |
 
 ### Mission Control
@@ -33,6 +33,10 @@ Built for daily use on a second monitor:
 
 - **Needs attention.** Approvals waiting (with a live timer), finished turns ready for review, failure streaks, context almost full, and tools that have run unusually long. Acknowledge items one by one, or clear them all with `X`.
 - **Notifications.** Off by default. Turn on desktop notifications, a chime and the tab-title count on the settings page, and choose which kinds alert you. They work in every visualization, not just this one.
+- **Buddies.** Each session tile has a blob buddy (drawn by [blobatar](https://github.com/Alain00/blobatar)) whose face, motion and prop follow what the agent is doing: a pencil and typing bounce while editing, a magnifier while searching, a terminal while running a command, a hop and a "!" when it needs approval, a red ✕ and a shake when a tool fails, sparkles when a turn finishes and Zzz when idle for long. Busy subagents appear as tiny buddies beside it, the drawer shows a large one, and each agent in the Agents tab has its own. Poses are held briefly so a burst of quick tools does not flicker.
+
+  ![Buddies for each activity](images/buddies.png)
+
 - **Live overview.** KPIs (live sessions, working agents, tools/min, tokens/min, recent errors), a smoothly scrolling throughput chart by tool kind, and compact session tiles. Each tile shows what the session is doing right now with a ticking timer, a heartbeat line that spikes on every tool call, and a context gauge.
 - **Live diffs.** Edits stream in as coloured diffs the moment an agent makes them (Claude Code's Edit, MultiEdit and Write, Codex's apply_patch), next to a running feed of every tool call. Expand a diff for the full change.
 - **Session drawer.** Open a session (click a tile, or `Enter`) to slide in its Activity (every tool call with input and output), Diffs, Chat, Agents (the tree and what each is waiting on) and Files. Pin it in Settings to keep it docked instead.

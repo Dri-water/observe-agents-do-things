@@ -12,7 +12,8 @@
   },
   "dependencies": {
     "@oadt/client": "0.1.0",
-    "@oadt/protocol": "0.1.0"
+    "@oadt/protocol": "0.1.0",
+    "blobatar": "2.7.0"
   },
   "devDependencies": {
     "vite": "^6.0.0"

@@ -16,6 +16,8 @@ import {
   isLive,
   openTools,
   recentChanges,
+  agentActivity,
+  sessionActivity,
   sessionList,
   shortPath,
   totalTokens,
@@ -32,6 +34,7 @@ import { resolveTheme, THEME_SETTING } from '../../host/settings'
 import { h, render } from '../../shared/dom'
 import { fadeSwap, KeyedList, tickTo } from '../../shared/motion'
 import { CATEGORY, harnessInfo } from '../../shared/theme'
+import { buddySeed, createBuddy, face, LOOKS, type Buddy } from '../../shared/buddy'
 import { Disposer, type ThemeName, type Visualization, type VizContext } from '../types'
 import { heartbeat, stackedArea } from './charts'
 
@@ -65,6 +68,7 @@ const SPAN_MAX = 15 * 60_000
 const BUCKETS = 60
 const PULSE_MS = 90_000
 const DIFF_PREVIEW = 10
+const CREW_MAX = 5
 
 const TEMPLATE = `
 <div class="mc">
@@ -90,7 +94,7 @@ const TEMPLATE = `
       <button class="mc-iconbtn mc-pin" title="Keep open"></button>
       <button class="mc-iconbtn mc-close" title="Close (Esc)" aria-label="Close">×</button>
     </div>
-    <div class="mc-detail-head"></div>
+    <div class="mc-detail-head"><span class="mc-hero"></span><div class="mc-detail-info"></div></div>
     <nav class="mc-tabs">
       <button data-tab="activity">Activity</button>
       <button data-tab="diffs">Diffs</button>
@@ -113,6 +117,9 @@ interface Tile {
   now: HTMLElement
   pulse: HTMLCanvasElement
   stats: HTMLElement
+  buddy: Buddy
+  crew: HTMLElement
+  crewBuddies: Map<string, Buddy>
 }
 
 function mount(root: HTMLElement, vctx: VizContext) {
@@ -481,12 +488,36 @@ function mount(root: HTMLElement, vctx: VizContext) {
   // ─── Session tiles ────────────────────────────────────────────────────
   function tileFor(s: SessionState, parts: Map<string, Tile>): Tile {
     const dot = h('span.dot'), title = h('span.ttl'), badge = h('span.badge'), age = h('span.faint.mono')
-    const meta = h('div.r2'), now = h('div.now'), pulse = h('canvas.pulse') as HTMLCanvasElement, stats = h('div.r5')
-    const el = h('div.mc-tile', { onclick: () => openSession(s.id), tabindex: '0' }, h('div.r1', null, dot, title, badge, age), meta, now, pulse, stats)
+    const meta = h('div.r2'), now = h('div.now'), pulse = h('canvas.pulse') as HTMLCanvasElement, stats = h('div.r5'), crew = h('span.crew')
+    const buddy = createBuddy(s.id, { size: 52, prop: true })
+    const el = h('div.mc-tile', { onclick: () => openSession(s.id), tabindex: '0' },
+      h('div.hd', null, h('span.me', null, buddy.el), h('div.info', null, h('div.r1', null, dot, title, badge, age), meta, now)),
+      pulse, h('div.r6', null, crew, stats))
     el.addEventListener('keydown', (e) => { if (e.key === 'Enter') openSession(s.id) })
-    const t = { el, dot, title, badge, age, meta, now, pulse, stats }
+    const t = { el, dot, title, badge, age, meta, now, pulse, stats, buddy, crew, crewBuddies: new Map<string, Buddy>() }
     parts.set(s.id, t)
     return t
+  }
+
+  /** Little buddies for the subagents that are busy right now. */
+  function syncCrew(t: Tile, s: SessionState, now: number): void {
+    const busy = Object.values(s.agents)
+      .filter((a) => a.id !== s.rootAgentId && (a.status === 'working' || a.status === 'waiting'))
+      .sort((a, b) => a.startedAt - b.startedAt)
+    const shown = busy.slice(0, CREW_MAX)
+    for (const [id] of t.crewBuddies) if (!shown.some((a) => a.id === id)) t.crewBuddies.delete(id)
+    const els: Array<HTMLElement | string> = shown.map((a) => {
+      let b = t.crewBuddies.get(a.id)
+      if (!b) { b = createBuddy(buddySeed(s.id, a.id, s.rootAgentId), { size: 22 }); t.crewBuddies.set(a.id, b) }
+      const act = agentActivity(s, a, now)
+      b.set(act)
+      b.el.title = `${a.name}: ${LOOKS[act].label}`
+      return b.el
+    })
+    const more = busy.length - shown.length
+    if (more > 0) els.push(`+${more}`)
+    const same = els.length === t.crew.childNodes.length && els.every((e, i) => typeof e === 'string' ? t.crew.childNodes[i]!.textContent === e : t.crew.childNodes[i] === e)
+    if (!same) t.crew.replaceChildren(...els)
   }
 
   function updateTile(t: Tile, s: SessionState, now: number): void {
@@ -498,6 +529,10 @@ function mount(root: HTMLElement, vctx: VizContext) {
     t.badge.textContent = hc.short
     t.age.textContent = formatAgo(s.lastActivityAt, now).replace(' ago', '')
     t.meta.textContent = [s.meta.project, s.meta.gitBranch, s.meta.model].filter(Boolean).join(' · ') || shortPath(s.meta.cwd ?? s.id, 2)
+    const act = sessionActivity(s, now)
+    t.buddy.set(act)
+    t.buddy.el.title = LOOKS[act].label
+    syncCrew(t, s, now)
 
     const waiting = Object.values(s.agents).find((a) => a.status === 'waiting')
     const running = openTools(s).filter((x) => x.category !== 'agent')
@@ -542,7 +577,7 @@ function mount(root: HTMLElement, vctx: VizContext) {
         h('span.chip', { style: `--c:var(--c-${c.change.op === 'write' ? 'write' : c.change.op === 'delete' ? 'shell' : 'edit'})` }, c.change.op),
         h('code.path', { title: c.change.path }, shortPath(c.change.path, 3)),
         h('span.add', null, `+${c.change.added}`), h('span.del', null, `−${c.change.removed}`),
-        h('span.who', null, `${s ? agentName(s, c.agentId) : c.agentId} · ${sessionName(s, c.sessionId)}`),
+        h('span.who', null, face(buddySeed(c.sessionId, c.agentId, s?.rootAgentId), 14), `${s ? agentName(s, c.agentId) : c.agentId} · ${sessionName(s, c.sessionId)}`),
         h('span.age.faint'),
         interactive ? h('button.mc-open', { onclick: (e: Event) => { e.stopPropagation(); openSession(c.sessionId, 'diffs') }, title: 'Open session' }, '↗') : '',
       ),
@@ -600,7 +635,7 @@ function mount(root: HTMLElement, vctx: VizContext) {
       h('span.time', null, new Date(t.startedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })),
       h('span.chip', { style: `--c:var(--c-${t.category})` }, CATEGORY[t.category]?.label ?? t.category),
       h('span.title', null, t.title),
-      h('span.who', null, `${agentName(s, t.agentId)} · ${sessionName(s, s.id)}`),
+      h('span.who', null, face(buddySeed(s.id, t.agentId, s.rootAgentId), 14), `${agentName(s, t.agentId)} · ${sessionName(s, s.id)}`),
       h('span.dur'),
     )
   }
@@ -700,8 +735,12 @@ function mount(root: HTMLElement, vctx: VizContext) {
   }
 
   // ─── Drawer content ───────────────────────────────────────────────────
-  const detailHead = q('.mc-detail-head')
+  const detailHead = q('.mc-detail-info')
+  const heroSlot = q('.mc-hero')
   const tabBody = q('.mc-tab-body')
+  let hero: { sid: string; buddy: Buddy } | undefined
+  /** Agent rows in the Agents tab, kept across repaints so their buddies keep animating. */
+  let agentRows: KeyedList<{ a: AgentNode; depth: number }> | undefined
 
   function renderDetail(world: WorldState, now: number): void {
     const s = ui.selected ? world.sessions[ui.selected] : undefined
@@ -709,10 +748,19 @@ function mount(root: HTMLElement, vctx: VizContext) {
     if (!s) {
       render(detailHead, 'none', () => [h('div.mc-noselect', null, 'Select a session')])
       render(tabBody, 'none', () => [])
+      heroSlot.replaceChildren()
+      hero = undefined
       return
     }
+    if (hero?.sid !== s.id) {
+      hero = { sid: s.id, buddy: createBuddy(s.id, { size: 64, prop: true }) }
+      heroSlot.replaceChildren(hero.buddy.el)
+    }
+    const act = sessionActivity(s, now)
+    hero.buddy.set(act)
     const fill = s.contextTokens && s.contextWindow ? Math.round((s.contextTokens / s.contextWindow) * 100) : undefined
-    render(detailHead, `${s.id}|${s.status}|${s.counts.tools}|${s.counts.turns}|${s.counts.toolErrors}|${formatCount(totalTokens(s.usage))}|${s.meta.costUsd}|${fill}|${Math.floor((now - s.statusSince) / 1000)}`, () => [
+    render(detailHead, `${s.id}|${s.status}|${act}|${s.counts.tools}|${s.counts.turns}|${s.counts.toolErrors}|${formatCount(totalTokens(s.usage))}|${s.meta.costUsd}|${fill}|${Math.floor((now - s.statusSince) / 1000)}`, () => [
+      h('div.mc-mood.act-' + act, null, LOOKS[act].label),
       h('div.dim', null, h('span.dot.' + s.status), ` ${harnessInfo(s.harness).label} · ${s.status} for ${formatDuration(now - s.statusSince)}`),
       h('div.faint.mono', { title: s.meta.cwd ?? '' }, [s.meta.cwd ? shortPath(s.meta.cwd, 3) : '', s.meta.gitBranch, s.meta.model].filter(Boolean).join(' · ')),
       h('div.mc-facts', null,
@@ -737,15 +785,39 @@ function mount(root: HTMLElement, vctx: VizContext) {
       if (changed && atBottom) tabBody.scrollTop = tabBody.scrollHeight
     } else if (ui.tab === 'agents') {
       const tree = agentTree(s)
-      render(tabBody, `g|${s.id}|${world.seq}|${Math.floor(now / 2000)}`, () => [h('div.mc-agents', null, ...(tree ? flatten(tree).map(({ a, depth }) => {
-        const cur = a.activeTools.map((id) => s.tools[id]).filter((t): t is ToolCallState => !!t).pop()
-        return h('div.ag', { style: `padding-left:${8 + depth * 14}px` },
-          h('span.dot.' + a.status),
-          h('span.nm', null, a.id === s.rootAgentId ? 'main' : a.name, a.role ? h('span.faint', null, ` ${a.role}`) : ''),
-          h('span.num', null, `${a.toolCount} tools · ${formatCount(totalTokens(a.usage))}`),
-          h('div.cur', null, a.status === 'waiting' ? `⏸ ${a.statusReason ?? 'waiting'} · ${formatDuration(now - a.statusSince)}` : cur ? `▸ ${cur.title}` : `${a.status} · ${formatAgo(a.lastActivityAt, now)}`),
-        )
-      }) : []))])
+      render(tabBody, `g|${s.id}`, () => {
+        const box = h('div.mc-agents')
+        const buddies = new Map<string, Buddy>()
+        const sid = s.id
+        agentRows = new KeyedList(box, {
+            key: (r) => r.a.id,
+            create: ({ a, depth }) => {
+              const b = createBuddy(buddySeed(s.id, a.id, s.rootAgentId), { size: 30 })
+              buddies.set(a.id, b)
+              return h('div.ag', { style: `padding-left:${8 + depth * 16}px` },
+                b.el,
+                h('span.nm', null, a.id === s.rootAgentId ? 'main' : a.name, a.role ? h('span.faint', null, ` ${a.role}`) : ''),
+                h('span.num'),
+                h('div.cur'),
+              )
+            },
+            update: (el, { a }) => {
+              const sess = client.world.sessions[sid] ?? s
+              const t = Date.now()
+              const act = agentActivity(sess, a, t)
+              buddies.get(a.id)?.set(act)
+              const cur = a.activeTools.map((id) => sess.tools[id]).filter((x): x is ToolCallState => !!x).pop()
+              setText(el.querySelector('.num')!, `${a.toolCount} tools · ${formatCount(totalTokens(a.usage))}`)
+              setText(el.querySelector('.cur')!, a.status === 'waiting'
+                ? `${LOOKS[act].label} · ${a.statusReason ?? 'waiting'} · ${formatDuration(t - a.statusSince)}`
+                : cur ? `${LOOKS[act].label} · ${cur.title}` : `${LOOKS[act].label} · ${formatAgo(a.lastActivityAt, t)}`)
+            },
+            flashClass: 'mo-flash',
+            collapse: true,
+        })
+        return [box]
+      })
+      agentRows?.sync(tree ? flatten(tree) : [])
     } else {
       const files = hotFiles(s, 80)
       render(tabBody, `f|${s.id}|${Object.keys(s.files).length}|${files[0]?.lastTs}|${Math.floor(now / 10000)}`, () => [h('div.mc-files', null, ...(files.length ? files.map((f) => h('div.f', { title: f.path },
@@ -837,3 +909,7 @@ function flatten(node: AgentNode, depth = 0, out: Array<{ a: AgentNode; depth: n
   return out
 }
 
+
+function setText(el: Element, text: string): void {
+  if (el.textContent !== text) el.textContent = text
+}
