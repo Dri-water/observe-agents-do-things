@@ -8,20 +8,36 @@
  * never parses transcripts or derives agent state on its own.
  */
 import type { ObserverClient } from '@oadt/client'
+import type { AttentionService } from '../host/attention'
+import type { SettingDef, Settings, ThemeName } from '../host/settings'
+
+export type { SettingDef, ThemeName }
 
 export interface VizContext {
   /** Live connection: `client.world`, `client.onChange`, `client.on('event')`, `client.sessionEvents()`… */
   client: ObserverClient
   /**
-   * A ready-made control for switching visualizations. Put it wherever it fits
-   * your layout. If you don't attach it during `mount`, the host floats it in a corner.
+   * The host's controls (visualization switcher and settings button). Put them
+   * wherever they fit your layout. If you don't attach them during `mount`, the
+   * host floats them in a corner.
    */
   switcher: HTMLElement
+  /** Persisted settings. Your own settings live under `<viz id>.<key>`. */
+  settings: Settings
+  /** The resolved app theme, and a subscription for changes. */
+  theme(): ThemeName
+  onTheme(fn: (theme: ThemeName) => void): () => void
+  /** What needs the user (shared with notifications), including acknowledgements. */
+  attention: AttentionService
+  /** Open the settings page, optionally at a section (e.g. your viz id). */
+  openSettings(section?: string): void
 }
 
 export interface VizInstance {
   /** Tear down everything: animation frames, timers, listeners, client subscriptions. */
   destroy(): void
+  /** Optional: bring a session into focus (used when a notification is clicked). */
+  focusSession?(sessionId: string): void
 }
 
 export interface Visualization {
@@ -29,6 +45,8 @@ export interface Visualization {
   name: string
   /** One line for the switcher menu. */
   description: string
+  /** Settings shown on the settings page under this visualization. Keys are relative (`labels` → `<id>.labels`). */
+  settings?: SettingDef[]
   mount(root: HTMLElement, ctx: VizContext): VizInstance
 }
 

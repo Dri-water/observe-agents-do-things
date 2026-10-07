@@ -108,6 +108,10 @@ export const constellation: Visualization = {
   id: 'constellation',
   name: 'Constellation',
   description: 'Agents as stars, tool calls as satellites, files in orbit — plus timeline, feed and inspector.',
+  settings: [
+    { key: 'labels', label: 'Tool labels', type: 'toggle', default: true, description: 'Label recent tool calls around each agent. Shortcut: L.' },
+    { key: 'showIdle', label: 'Show older sessions', type: 'toggle', default: false, description: 'Include sessions idle for more than an hour in the session list.' },
+  ],
   mount,
 }
 
@@ -129,10 +133,10 @@ function mount(root: HTMLElement, vctx: VizContext) {
     filter: { text: '', showIdle: false },
     hovered: undefined as string | undefined,
   }
-  try {
-    ui.showLabels = localStorage.getItem('oadt-labels') !== '0'
-    ui.filter.showIdle = localStorage.getItem('oadt-show-idle') === '1'
-  } catch { /* ignore */ }
+  ui.showLabels = vctx.settings.get<boolean>('constellation.labels')
+  ui.filter.showIdle = vctx.settings.get<boolean>('constellation.showIdle')
+  d.add(vctx.settings.on('constellation.labels', (v) => { ui.showLabels = v === true }))
+  d.add(vctx.settings.on('constellation.showIdle', (v) => { ui.filter.showIdle = v === true; showIdle.checked = v === true; lastPanel = 0 }))
 
   const activity = new Map<string, number[]>()
   const marks: Mark[] = []
@@ -410,8 +414,7 @@ function mount(root: HTMLElement, vctx: VizContext) {
   fitBtn.addEventListener('click', () => { ui.autoFit = true })
   labelsBtn.addEventListener('click', () => toggleLabels())
   function toggleLabels(): void {
-    ui.showLabels = !ui.showLabels
-    try { localStorage.setItem('oadt-labels', ui.showLabels ? '1' : '0') } catch { /* ignore */ }
+    vctx.settings.set('constellation.labels', !ui.showLabels)
   }
   for (const b of root.querySelectorAll<HTMLElement>('#tabs [data-tab]')) b.addEventListener('click', () => setTab(b.dataset.tab as typeof ui.tab))
   const pauseBtn = $('#pause')
@@ -437,11 +440,7 @@ function mount(root: HTMLElement, vctx: VizContext) {
   search.addEventListener('input', () => { ui.filter.text = search.value; lastPanel = 0 })
   const showIdle = $('#show-idle') as HTMLInputElement
   showIdle.checked = ui.filter.showIdle
-  showIdle.addEventListener('change', () => {
-    ui.filter.showIdle = showIdle.checked
-    try { localStorage.setItem('oadt-show-idle', showIdle.checked ? '1' : '0') } catch { /* ignore */ }
-    lastPanel = 0
-  })
+  showIdle.addEventListener('change', () => vctx.settings.set('constellation.showIdle', showIdle.checked))
   $('#menu').addEventListener('click', () => $('#sidebar').classList.toggle('open'))
   const help = $('#help')
   $('#help-btn').addEventListener('click', () => { help.hidden = false })

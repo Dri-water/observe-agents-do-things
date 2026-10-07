@@ -28,6 +28,14 @@ export const office: Visualization = {
   id: 'office',
   name: 'Agent Office',
   description: 'A cosy isometric office: each session is a room, each agent a little worker at a desk.',
+  settings: [
+    { key: 'labels', label: 'Name tags', type: 'toggle', default: true, description: 'Show name tags under workers. Shortcut: L.' },
+    {
+      key: 'lighting', label: 'Lighting', type: 'select', default: 'auto',
+      description: 'Day and night follow your clock in auto mode. You can also click the clock in the office.',
+      options: [{ value: 'auto', label: 'Follow my clock' }, { value: 'day', label: 'Always day' }, { value: 'night', label: 'Always night' }],
+    },
+  ],
   mount,
 }
 
@@ -67,7 +75,8 @@ function mount(root: HTMLElement, vctx: VizContext) {
     hovered: undefined as string | undefined,
     selected: undefined as { room: string; char: string } | undefined,
   }
-  try { ui.labels = localStorage.getItem('oadt-office-labels') !== '0' } catch { /* ignore */ }
+  ui.labels = vctx.settings.get<boolean>('office.labels')
+  d.add(vctx.settings.on('office.labels', (v) => { ui.labels = v === true }))
 
   let pending: ObserverEvent[] = []
   let dirty = true
@@ -183,22 +192,17 @@ function mount(root: HTMLElement, vctx: VizContext) {
   d.listen(canvas, 'pointerleave', () => { ui.hovered = undefined })
 
   const labelsBtn = q('.of-labels')
-  const toggleLabels = () => {
-    ui.labels = !ui.labels
-    try { localStorage.setItem('oadt-office-labels', ui.labels ? '1' : '0') } catch { /* ignore */ }
-  }
+  const toggleLabels = () => vctx.settings.set('office.labels', !ui.labels)
   d.listen(labelsBtn, 'click', toggleLabels)
-  const params = new URLSearchParams(location.search)
-  let mode = (params.get('time') as TimeMode | null) ?? (() => { try { return (localStorage.getItem('oadt-office-time') as TimeMode | null) ?? 'auto' } catch { return 'auto' } })()
-  setTimeMode(mode)
+  const timeParam = new URLSearchParams(location.search).get('time') as TimeMode | null
+  setTimeMode(timeParam ?? vctx.settings.get<TimeMode>('office.lighting'))
+  d.add(vctx.settings.on('office.lighting', (v) => { setTimeMode(v as TimeMode); renderTop(Date.now()) }))
   const clockEl = q('.of-clock')
   clockEl.title = 'Lighting: click to switch between auto, day and night'
   clockEl.style.cursor = 'pointer'
   d.listen(clockEl, 'click', () => {
-    mode = mode === 'auto' ? 'day' : mode === 'day' ? 'night' : 'auto'
-    setTimeMode(mode)
-    try { localStorage.setItem('oadt-office-time', mode) } catch { /* ignore */ }
-    renderTop(Date.now())
+    const mode = getTimeMode()
+    vctx.settings.set('office.lighting', mode === 'auto' ? 'day' : mode === 'day' ? 'night' : 'auto')
   })
   d.add(() => setTimeMode('auto'))
   d.listen(q('.of-fit'), 'click', () => { ui.autoFit = true })

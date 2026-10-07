@@ -50,6 +50,8 @@ export interface AgentState {
   depth: number
   status: AgentStatus
   statusReason?: string
+  /** When `status` last changed (epoch ms). */
+  statusSince: number
   startedAt: number
   lastActivityAt: number
   /** Ids of tool calls currently in flight. */
@@ -101,6 +103,8 @@ export interface SessionState {
   meta: SessionMeta
   status: SessionStatus
   statusReason?: string
+  /** When `status` last changed (epoch ms). */
+  statusSince: number
   startedAt: number
   lastActivityAt: number
   rootAgentId: string
@@ -165,6 +169,7 @@ function ensureSession(world: WorldState, e: ObserverEvent): SessionState {
       harness: e.harness,
       meta: {},
       status: 'working',
+      statusSince: e.ts,
       startedAt: e.ts,
       // Metadata and status events are not activity; never let them make a session look fresh.
       lastActivityAt: NON_ACTIVITY.has(e.kind) ? 0 : e.ts,
@@ -193,6 +198,7 @@ function ensureAgent(s: SessionState, agentId: string, ts: number): AgentState {
       name: isRoot ? 'main' : 'subagent',
       depth: isRoot ? 0 : 1,
       status: 'working',
+      statusSince: ts || Date.now(),
       startedAt: ts || Date.now(),
       lastActivityAt: ts,
       activeTools: [],
@@ -306,6 +312,8 @@ export function applyEvent(world: WorldState, e: ObserverEvent, limits: Projecti
   const s = ensureSession(world, e)
   const a = ensureAgent(s, e.agentId, NON_ACTIVITY.has(e.kind) ? 0 : e.ts)
   const isRoot = a.id === s.rootAgentId
+  const prevSession = s.status
+  const prevAgents = new Map(Object.values(s.agents).map((ag) => [ag.id, ag.status]))
 
   if (!NON_ACTIVITY.has(e.kind)) {
     // Transcripts are read file by file, so older events can arrive after newer ones.
@@ -489,6 +497,11 @@ export function applyEvent(world: WorldState, e: ObserverEvent, limits: Projecti
       s.lastNote = { level: e.level, text: e.text, ts: e.ts }
       break
     }
+  }
+  if (s.status !== prevSession) s.statusSince = e.ts
+  for (const ag of Object.values(s.agents)) {
+    const before = prevAgents.get(ag.id)
+    if (before !== undefined && before !== ag.status) ag.statusSince = e.ts
   }
   return world
 }

@@ -133,3 +133,29 @@ test('reserved object keys in ids are ignored rather than polluting prototypes',
   assert.equal(Object.hasOwn(w.sessions, 'constructor'), false)
   assert.equal(Object.keys(w.sessions.s1!.files).length, 0)
 })
+
+test('attention: waiting, finished turns, failure streaks, long tools and full context', async () => {
+  const { attentionItems } = await import('@oadt/protocol')
+  const w = createWorld()
+  applyEvent(w, ev({ kind: 'turn.started' }, 1000))
+  applyEvent(w, ev({ kind: 'tool.started', callId: 'long', tool: 'Bash', category: 'shell', title: '$ make' }, 1000))
+  applyEvent(w, ev({ kind: 'usage', delta: { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, reasoning: 0 }, contextTokens: 180_000, contextWindow: 200_000 }, 1000))
+  for (const id of ['f1', 'f2', 'f3']) {
+    applyEvent(w, ev({ kind: 'tool.started', callId: id, tool: 'Bash', category: 'shell', title: `$ ${id}` }, 2000))
+    applyEvent(w, ev({ kind: 'tool.finished', callId: id, ok: false }, 2100))
+  }
+  let kinds = attentionItems(w, 4 * 60_000).map((i) => i.kind).sort()
+  assert.deepEqual(kinds, ['context', 'errors', 'long-tool'])
+
+  applyEvent(w, ev({ kind: 'agent.status', status: 'waiting', reason: '$ make' }, 5 * 60_000))
+  const waiting = attentionItems(w, 6 * 60_000).find((i) => i.kind === 'waiting')!
+  assert.equal(waiting.since, 5 * 60_000, 'statusSince records when waiting began')
+  assert.equal(attentionItems(w, 6 * 60_000)[0]!.severity, 'high')
+
+  applyEvent(w, ev({ kind: 'message', role: 'assistant', text: 'All done.' }, 7 * 60_000))
+  applyEvent(w, ev({ kind: 'turn.ended', outcome: 'completed' }, 7 * 60_000))
+  kinds = attentionItems(w, 8 * 60_000).map((i) => i.kind)
+  assert.ok(kinds.includes('finished'))
+  assert.equal(attentionItems(w, 8 * 60_000).find((i) => i.kind === 'finished')!.detail, 'All done.')
+  assert.ok(!attentionItems(w, 60 * 60_000).some((i) => i.kind === 'finished'), 'finished turns age out')
+})

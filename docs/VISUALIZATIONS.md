@@ -13,15 +13,31 @@ What it does **not** do is parse transcripts, derive agent status or link
 subagents. That all happens in the core, and the visualization reads it from
 the live `WorldState` and the event stream.
 
-Switch visualizations from the switcher in the corner, with the `V` key, or with
-`?viz=<id>` in the URL. The choice is remembered.
+Switch visualizations from the switcher, with the `V` key, with `?viz=<id>` in
+the URL, or on the settings page (`⚙`, or `Ctrl+,`). The settings page also
+holds the theme, notification preferences and each visualization's own options.
 
 ## Built in
 
 | | |
 |---|---|
 | **Constellation** (`constellation`) | Agents as glowing nodes with subagents in a radial tree, tool calls as satellites, files in orbit. Swimlane timeline, live feed and an inspector for every session, agent, tool and file. |
+| **Mission Control** (`mission`) | A compact IDE-style dashboard: what needs you, what is running, and how fast. Themeable. See below. |
 | **Agent Office** (`office`) | A cute isometric office. Each session is a room and each agent a little worker. See below. |
+
+### Mission Control
+
+![Mission Control in Gruvbox Dark](images/mission-gruvbox.png)
+
+Built for daily use on a second monitor:
+
+- **Needs attention.** Approvals waiting (with a live timer), finished turns ready for review, failure streaks, context almost full, and tools that have run unusually long. Acknowledge items one by one, or clear them all with `X`.
+- **Notifications.** Off by default. Turn on desktop notifications, a chime and the tab-title count on the settings page, and choose which kinds alert you. They work in every visualization, not just this one.
+- **Live overview.** KPIs (live sessions, working agents, tools/min, tokens/min, recent errors), a stacked throughput chart by tool kind, and compact session tiles. Each tile shows what the session is doing right now with a ticking timer, plus a sparkline and a context gauge.
+- **Detail panel.** Per-session Activity (every tool call; click one for its input and output), Chat (prompts and replies), Agents (the tree, each agent's current tool and how long it has been waiting) and Files.
+- **Themes.** Dark Modern, Light Modern, Gruvbox Dark and Gruvbox Light, or follow the system.
+
+Keys: `/` filter, `J`/`K` move between sessions, `1`–`4` detail tabs, `X` acknowledge all.
 
 ### Agent Office
 
@@ -90,7 +106,11 @@ export const ticker: Visualization = {
 
 The rules:
 
-1. **Everything you need is on `ctx.client`.** `client.world` is the live
+1. **Everything you need is on `ctx`.** `ctx.client` is the live data,
+   `ctx.settings` stores your options (declare them in `settings` on the
+   visualization and they appear on the settings page), `ctx.theme()` and
+   `ctx.onTheme()` give the app theme, and `ctx.attention` shares what needs the
+   user, including acknowledgements. On the client, `client.world` is the live
    `WorldState`. `client.onChange((world, events) => …)` fires at most once
    per microtask with the new events. `client.sessionEvents(id)` gives history.
    The selectors in `@oadt/protocol` (`sessionList`, `agentTree`, `openTools`,
