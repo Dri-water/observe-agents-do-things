@@ -123,3 +123,64 @@ export function fadeSwap(el: HTMLElement): void {
   if (reduced()) return
   el.animate([{ opacity: 0.25, transform: 'translateY(3px)' }, { opacity: 1, transform: 'none' }], { duration: 200, easing: EASE })
 }
+
+export interface TypeOutOptions {
+  /** Lines shown at once (context). Everything else in `lines` is replayed. */
+  instant?: (el: HTMLElement) => boolean
+  /** Lines that are struck in one by one before the typing starts (removals). */
+  struck?: (el: HTMLElement) => boolean
+  /** Upper bound for the whole replay, however long the text (ms). */
+  budgetMs?: number
+}
+
+/**
+ * Replay already-rendered lines as if someone were typing them: struck lines
+ * appear one after another, then the rest are typed character by character
+ * behind a caret. Returns a function that stops and shows everything.
+ *
+ * Styling hooks: `.ty-hide` (not reached yet), `.ty-cut` (just struck in),
+ * `.typing` (the line with the caret).
+ */
+export function typeOut(lines: HTMLElement[], opts: TypeOutOptions = {}): () => void {
+  if (reduced()) return () => {}
+  const struck = lines.filter((el) => !opts.instant?.(el) && opts.struck?.(el))
+  const typed = lines.filter((el) => !opts.instant?.(el) && !opts.struck?.(el))
+  const texts = typed.map((el) => el.textContent ?? '')
+  const chars = texts.reduce((n, t) => n + t.length, 0)
+  for (const el of [...struck, ...typed]) el.classList.add('ty-hide')
+
+  const cutMs = Math.min(70, 400 / Math.max(1, struck.length))
+  const typeMs = Math.min(opts.budgetMs ?? 1800, Math.max(250, chars * 16))
+  const start = performance.now()
+  let raf = 0
+  let current: HTMLElement | undefined
+
+  const finish = () => {
+    cancelAnimationFrame(raf)
+    struck.forEach((el) => el.classList.remove('ty-hide'))
+    typed.forEach((el, i) => { el.classList.remove('ty-hide', 'typing'); el.textContent = texts[i]! })
+  }
+  const step = (t: number) => {
+    const elapsed = t - start
+    struck.forEach((el, i) => {
+      if (elapsed >= i * cutMs && el.classList.contains('ty-hide')) el.classList.replace('ty-hide', 'ty-cut')
+    })
+    const k = Math.max(0, elapsed - struck.length * cutMs) / typeMs
+    if (k >= 1) { finish(); return }
+    // Ease out so the typing starts brisk and settles at the end of the change.
+    let left = Math.floor(chars * (1 - Math.pow(1 - k, 1.6)))
+    typed.forEach((el, i) => {
+      const full = texts[i]!
+      if (left <= 0 && el.classList.contains('ty-hide')) return
+      const n = Math.min(full.length, Math.max(0, left))
+      left -= full.length
+      el.classList.remove('ty-hide')
+      const text = full.slice(0, n) || (n < full.length ? '' : full)
+      if (el.textContent !== text) el.textContent = text
+      if (n < full.length && el !== current) { current?.classList.remove('typing'); current = el; el.classList.add('typing') }
+    })
+    raf = requestAnimationFrame(step)
+  }
+  raf = requestAnimationFrame(step)
+  return finish
+}

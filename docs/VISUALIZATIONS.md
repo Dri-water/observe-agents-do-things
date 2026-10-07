@@ -38,7 +38,7 @@ Built for daily use on a second monitor:
   ![Buddies for each activity](images/buddies.png)
 
 - **Live overview.** KPIs (live sessions, working agents, tools/min, tokens/min, recent errors), a smoothly scrolling throughput chart by tool kind, and compact session tiles. Each tile shows what the session is doing right now with a ticking timer, a heartbeat line that spikes on every tool call, and a context gauge.
-- **Live diffs.** Edits stream in as coloured diffs the moment an agent makes them (Claude Code's Edit, MultiEdit and Write, Codex's apply_patch), next to a running feed of every tool call. Expand a diff for the full change.
+- **Live diffs.** Edits stream in as coloured diffs the moment an agent makes them (Claude Code's Edit, MultiEdit and Write, Codex's apply_patch) and replay as if typed: removed lines are struck in, then the new code types itself out behind a caret. A running feed of every tool call sits beside them. Expand a diff for the full change.
 - **Session drawer.** Open a session (click a tile, or `Enter`) to slide in its Activity (every tool call with input and output), Diffs, Chat, Agents (the tree and what each is waiting on) and Files. Pin it in Settings to keep it docked instead.
 - **Themes.** Dark Modern, Light Modern, Gruvbox Dark and Gruvbox Light, or follow the system.
 

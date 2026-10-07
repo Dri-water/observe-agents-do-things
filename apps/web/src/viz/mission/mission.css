@@ -350,3 +350,13 @@
 @keyframes mc-crew-in { from { transform: scale(0); } }
 .bb-face { display: inline-block; vertical-align: -3px; margin-right: 4px; border-radius: 50%; }
 @media (prefers-reduced-motion: reduce) { .mc-tile .crew .bb { animation: none; } }
+
+/* ─── Diffs typed out as they arrive ───────────────────────────────── */
+.mc-diff-body .ln.ty-hide { display: none; }
+.mc-diff-body .ln.ty-cut { animation: mc-cut .28s ease-out; }
+@keyframes mc-cut { from { opacity: 0; transform: translateX(-6px); background-color: color-mix(in srgb, var(--err) 35%, transparent); } }
+.mc-diff-body .ln.typing::after {
+  content: ""; display: inline-block; width: .55em; height: 1.15em; margin-left: 1px;
+  vertical-align: -.2em; background: var(--accent); animation: mc-caret 1s steps(2) infinite;
+}
+@keyframes mc-caret { 50% { opacity: 0; } }

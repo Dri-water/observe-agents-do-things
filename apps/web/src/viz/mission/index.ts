@@ -32,7 +32,7 @@ import {
 } from '@oadt/protocol'
 import { resolveTheme, THEME_SETTING } from '../../host/settings'
 import { h, render } from '../../shared/dom'
-import { fadeSwap, KeyedList, tickTo } from '../../shared/motion'
+import { fadeSwap, KeyedList, tickTo, typeOut } from '../../shared/motion'
 import { CATEGORY, harnessInfo } from '../../shared/theme'
 import { buddySeed, createBuddy, face, LOOKS, type Buddy } from '../../shared/buddy'
 import { Disposer, type ThemeName, type Visualization, type VizContext } from '../types'
@@ -381,7 +381,15 @@ function mount(root: HTMLElement, vctx: VizContext) {
     })
     const diffs = new KeyedList<ChangeEntry>(diffList, {
       key: (c) => c.key,
-      create: (c) => diffCard(c, true),
+      create: (c) => {
+        const card = diffCard(c, true)
+        // Changes that arrive while you watch are replayed as if typed; the backlog shows at once.
+        if (diffsPrimed) typing.set(card, typeOut(Array.from(card.querySelectorAll<HTMLElement>('.ln')), {
+          instant: (el) => !el.classList.contains('add') && !el.classList.contains('del'),
+          struck: (el) => el.classList.contains('del'),
+        }))
+        return card
+      },
       update: (el, c) => updateDiffCard(el, c),
       flashClass: 'mo-flash',
       collapse: true,
@@ -436,6 +444,7 @@ function mount(root: HTMLElement, vctx: VizContext) {
     const changes = recentChanges(world, 30, ids)
     o.diffEmpty.hidden = changes.length > 0
     o.diffs.sync(changes)
+    diffsPrimed = true
 
     const rows = ids.flatMap((id) => sessionRows(world.sessions[id]!, 40))
       .sort((a, b) => Number(b.t.endedAt === undefined) - Number(a.t.endedAt === undefined) || b.t.startedAt - a.t.startedAt).slice(0, 60)
@@ -591,7 +600,13 @@ function mount(root: HTMLElement, vctx: VizContext) {
     return card
   }
 
+  /** Cards whose lines are still being typed out, with the function that finishes them. */
+  const typing = new WeakMap<HTMLElement, () => void>()
+  let diffsPrimed = false
+
   function fillDiff(card: HTMLElement, c: ChangeEntry, full: boolean): void {
+    typing.get(card)?.()
+    typing.delete(card)
     const lines = full ? c.change.lines : c.change.lines.slice(0, DIFF_PREVIEW)
     const body = card.querySelector('.mc-diff-body') as HTMLElement
     body.replaceChildren(...lines.map((l) => {
