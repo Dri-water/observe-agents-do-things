@@ -142,8 +142,10 @@ function mount(root: HTMLElement, vctx: VizContext) {
     if (!b) return
     const w = canvas.clientWidth, hh = canvas.clientHeight
     const padTop = 80, padBottom = w < 760 ? 60 : 70
-    const zoom = clamp(Math.min((w - 40) / (b.maxX - b.minX), (hh - padTop - padBottom) / (b.maxY - b.minY)), 0.35, 2.4)
-    const cx = (b.minX + b.maxX) / 2
+    // Leave the front desk panel's column free when there is room for it.
+    const padRight = w >= 1100 && q('.of-desk').offsetParent ? 380 : 0
+    const zoom = clamp(Math.min((w - 40 - padRight) / (b.maxX - b.minX), (hh - padTop - padBottom) / (b.maxY - b.minY)), 0.35, 2.4)
+    const cx = (b.minX + b.maxX) / 2 + padRight / 2 / zoom
     const cy = (b.minY + b.maxY) / 2 - (padTop - padBottom) / 2 / zoom
     const k = Math.min(1, dt * 3)
     cam.zoom += (zoom - cam.zoom) * k

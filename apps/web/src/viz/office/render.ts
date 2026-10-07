@@ -65,7 +65,7 @@ export function daylight(date = new Date()): number {
 
 /** Seat height of the worker depending on where they sit (shared with picking). */
 export function seatZ(mode: Char['mode']): number {
-  return mode === 'seated' ? 0.46 : mode === 'lounging' ? 0.47 : 0
+  return mode === 'seated' ? 0.46 : mode === 'lounging' ? SEAT_Z : 0
 }
 
 export function renderOffice(
@@ -212,8 +212,8 @@ function drawRoom(ctx: CanvasRenderingContext2D, room: Room, s: SessionState, no
     ctx.restore()
   }
   drawWallsLive(ctx, room, s, now, day, hc)
-  for (const c of room.chars.values()) if (c.mode === 'walking' || c.mode === 'standing') blobShadow(ctx, c.x, c.y, 0.34, 0.24 * c.alpha)
-  blobShadow(ctx, room.cat.x, room.cat.y, 0.26, 0.2)
+  for (const c of room.chars.values()) if (c.mode === 'walking' || c.mode === 'standing') blobShadow(ctx, c.x, c.y, 0.4, 0.3 * c.alpha)
+  blobShadow(ctx, room.cat.x, room.cat.y, 0.3, 0.3)
 
   // Depth-sorted furniture, people and the cat.
   const sprites: Sprite[] = []
@@ -223,7 +223,7 @@ function drawRoom(ctx: CanvasRenderingContext2D, room: Room, s: SessionState, no
     const occupant = d.occupant ? room.chars.get(d.occupant) : undefined
     const agent = occupant ? s.agents[occupant.id] : undefined
     const act = occupant && occupant.mode === 'seated' ? activityOf(s, agent, now) : undefined
-    add(d.seat.x + d.seat.y - 0.3, () => drawChair(ctx, d.seat.x, d.seat.y, hc))
+    add(d.seat.x + d.seat.y - 0.3, () => drawChair(ctx, d.seat.x, d.seat.y, hc, d.boss ? 1.35 : 1))
     add(d.x + d.w / 2 + d.y + d.d / 2, () => drawDesk(ctx, d, act?.activity, now, hc, i, lights, day))
   })
   add(COUCH.x + COUCH.y - 0.5, () => drawCouchBack(ctx))
@@ -288,7 +288,7 @@ function edgeGrad(ctx: CanvasRenderingContext2D, a: Pt, b: Pt, c: Pt, c0: string
   return grad(ctx, a, { x: a.x + nx * d, y: a.y + ny * d }, c0, c1)
 }
 
-const PLANTS: Array<[number, number, number, number]> = [[0.55, 0.6, 1.1, 0], [8.25, 0.45, 0.8, 1], [11.45, 8.5, 1.0, 2], [3.2, 0.5, 0.55, 1]]
+const PLANTS: Array<[number, number, number, number]> = [[0.55, 0.6, 1.1, 0], [8.25, 0.45, 0.8, 1], [7.55, 8.05, 0.9, 2], [3.2, 0.5, 0.55, 1]]
 
 function drawStatic(ctx: CanvasRenderingContext2D, room: Room, day: number, hc: string): void {
   // Floor slab (the walls sit on it too).
@@ -299,7 +299,7 @@ function drawStatic(ctx: CanvasRenderingContext2D, room: Room, day: number, hc: 
 
   // Floor decals: rugs, light pools, doormat, shadows. Nothing here has height.
   drawRug(ctx, 1.2, 2.55, 9.9, 5.3, hc)
-  drawRug(ctx, 7.7, 7.45, 3.9, 1.5, '#9aa3e6', true)
+  drawRug(ctx, 7.35, 7.1, 4.55, 1.65, '#9aa3e6', true)
   floorQuad(ctx, DOORMAT.x, DOORMAT.y, DOORMAT.w, DOORMAT.d, '#a99274', 0.004, 'rgba(60,40,20,0.25)')
   floorQuad(ctx, DOORMAT.x + 0.1, DOORMAT.y + 0.08, DOORMAT.w - 0.2, DOORMAT.d - 0.16, '#b9a283', 0.005)
   if (day > 0.02) for (const win of WINDOWS) {
@@ -308,7 +308,15 @@ function drawStatic(ctx: CanvasRenderingContext2D, room: Room, day: number, hc: 
     poly(ctx, [a, b, iso(win.x + win.w + 0.75, 2.6), iso(win.x - 0.55, 2.6)], g)
   }
   for (const d of room.desks) castShadow(ctx, d.x, d.y, d.w, d.d, 0.75, 0.13)
-  castShadow(ctx, COUCH.x - 0.2, COUCH.y, COUCH.w + 0.4, COUCH.d, 0.8, 0.14)
+  castShadow(ctx, COUCH.x - 0.3, COUCH.y, COUCH.w + 0.6, COUCH.d, 0.9, 0.2)
+  {
+    // The sofa's cast shadow is mostly under the sofa; a soft band along its base settles it on the rug.
+    const fx0 = COUCH.x - 0.3, fx1 = COUCH.x + COUCH.w + 0.3, fy = COUCH.y + COUCH.d
+    const a = iso(fx0, fy), b = iso(fx1, fy)
+    poly(ctx, [a, b, iso(fx1 + 0.1, fy + 0.3), iso(fx0 + 0.1, fy + 0.3)], edgeGrad(ctx, a, b, iso(fx0, fy + 0.3), 'rgba(40,28,64,0.28)', 'rgba(40,28,64,0)'))
+    const c = iso(fx1, COUCH.y), d2 = iso(fx1, fy)
+    poly(ctx, [c, d2, iso(fx1 + 0.3, fy + 0.1), iso(fx1 + 0.3, COUCH.y + 0.1)], edgeGrad(ctx, c, d2, iso(fx1 + 0.3, COUCH.y), 'rgba(40,28,64,0.22)', 'rgba(40,28,64,0)'))
+  }
   castShadow(ctx, CABINET.x, CABINET.y, CABINET.w, CABINET.d, CABINET.h, 0.14)
   castShadow(ctx, COUNTER.x, COUNTER.y, COUNTER.w, COUNTER.d, COUNTER.h, 0.14)
   castShadow(ctx, SHELF.x, SHELF.y, SHELF.w, SHELF.d, SHELF.h, 0.12)
@@ -388,7 +396,7 @@ function drawWallsStatic(ctx: CanvasRenderingContext2D, day: number, hc: string)
   ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y); ctx.lineTo(c3.x, c3.y)
   ctx.stroke()
 
-  for (const win of WINDOWS) drawWindow(ctx, win.x, win.w, day)
+  WINDOWS.forEach((win, i) => drawWindow(ctx, win.x, win.w, day, i === WINDOWS.length - 1 ? 'sun' : i === 0 ? 'moon' : 'none'))
   drawDoorFrame(ctx)
   drawPrint(ctx, hc)
 }
@@ -398,25 +406,41 @@ function drawWallsLive(ctx: CanvasRenderingContext2D, room: Room, s: SessionStat
   drawDoorLeaf(ctx, room)
   drawWallScreen(ctx, s, now, hc)
 
-  // Name plaque above the door.
-  onWallX(ctx, DOOR.x - 1.5, 0, DOOR.h + 0.6, () => {
-    const label = clip(room.title, 26)
-    ctx.font = `700 11px ${FONT}`
-    const tw = Math.max(ctx.measureText(label).width + 28, 70)
-    roundRect(ctx, 0, -17, tw, 22, 7)
-    ctx.fillStyle = 'rgba(0,0,0,0.12)'
-    ctx.fill()
-    roundRect(ctx, 0, -19, tw, 22, 7)
-    ctx.fillStyle = hc
-    ctx.fill()
-    ctx.fillStyle = '#ffffff'
-    ctx.textBaseline = 'middle'
-    ctx.fillText(label, 19, -8)
-    ctx.beginPath()
-    ctx.arc(9.5, -8, 3.2, 0, Math.PI * 2)
-    ctx.fillStyle = s.status === 'working' ? '#c9ffe0' : s.status === 'waiting' ? '#ffe7b0' : 'rgba(255,255,255,0.55)'
-    ctx.fill()
-  })
+  // Name plaque above the door: small, up to two lines, inside the wall and clear of the screen.
+  {
+    ctx.font = `700 8px ${FONT}`
+    const maxText = 66
+    const words = room.title.split(/\s+/)
+    const lines: string[] = []
+    let cur = ''
+    for (const wd of words) {
+      const next = cur ? `${cur} ${wd}` : wd
+      if (ctx.measureText(next).width > maxText && cur) { lines.push(cur); cur = wd; if (lines.length === 2) break } else cur = next
+    }
+    if (lines.length < 2 && cur) lines.push(cur)
+    if (lines.length === 2 && words.join(' ').length > lines.join(' ').length) {
+      let last = lines[1]!
+      while (last.length > 1 && ctx.measureText(last + '…').width > maxText) last = last.slice(0, -1)
+      lines[1] = last + '…'
+    }
+    const tw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 24
+    const th = 8 + lines.length * 9.5
+    const px = clamp(DOOR.x + DOOR.w / 2 - tw / TW, 9.45, ROOM_W - 0.3 - tw / (TW / 2))
+    onWallX(ctx, px, 0, DOOR.h + 0.14 + th / ZH, () => {
+      ctx.font = `700 8px ${FONT}`
+      roundRect(ctx, 0, 2, tw, th, 5)
+      ctx.fillStyle = 'rgba(0,0,0,0.12)'
+      ctx.fill()
+      roundRect(ctx, 0, 0, tw, th, 5)
+      ctx.fillStyle = hc
+      ctx.fill()
+      ctx.fillStyle = s.status === 'working' ? '#c9ffe0' : s.status === 'waiting' ? '#ffe7b0' : 'rgba(255,255,255,0.55)'
+      ctx.beginPath(); ctx.arc(8, th / 2, 2.6, 0, Math.PI * 2); ctx.fill()
+      ctx.fillStyle = '#ffffff'
+      ctx.textBaseline = 'top'
+      lines.forEach((l, i) => ctx.fillText(l, 15, 4 + i * 9.5))
+    })
+  }
 
   // Whiteboard on the left wall: the agent's plan.
   onWallY(ctx, 0, 5.2, 1.08, () => {
@@ -572,9 +596,17 @@ function drawWindowLive(ctx: CanvasRenderingContext2D, x: number, w: number, now
     }
   }
   ctx.restore()
+  // Mullions go over the glass, clouds and stars.
+  ctx.strokeStyle = '#ffffff'
+  ctx.lineWidth = 1.8
+  ctx.beginPath()
+  const m1 = iso(x + w / 2, 0, gz0), m2 = iso(x + w / 2, 0, gz1)
+  const h1 = iso(gx0, 0, z0 + h * 0.5), h2 = iso(gx1, 0, z0 + h * 0.5)
+  ctx.moveTo(m1.x, m1.y); ctx.lineTo(m2.x, m2.y); ctx.moveTo(h1.x, h1.y); ctx.lineTo(h2.x, h2.y)
+  ctx.stroke()
 }
 
-function drawWindow(ctx: CanvasRenderingContext2D, x: number, w: number, day: number): void {
+function drawWindow(ctx: CanvasRenderingContext2D, x: number, w: number, day: number, orb: 'sun' | 'moon' | 'none'): void {
   const z0 = WIN_Z0, h = WIN_H
   const q = wq
   // Frame.
@@ -601,12 +633,12 @@ function drawWindow(ctx: CanvasRenderingContext2D, x: number, w: number, day: nu
       ctx.fillRect(p.x, p.y, 1.5, 1.5)
     }
   }
-  if (day > 0.4) {
+  if (day > 0.4 && orb === 'sun') {
     const sun = iso(gx0 + (gx1 - gx0) * 0.78, 0, gz1 - 0.3)
     ctx.fillStyle = `rgba(255,236,170,${0.9 * day})`
     ctx.beginPath(); ctx.arc(sun.x, sun.y, 6, 0, Math.PI * 2); ctx.fill()
   }
-  if (day < 0.6) {
+  if (day < 0.6 && orb === 'moon') {
     ctx.globalAlpha = 1 - day
     const m = iso(gx0 + (gx1 - gx0) * 0.72, 0, gz1 - 0.32)
     ctx.fillStyle = '#fff6c8'
@@ -619,14 +651,6 @@ function drawWindow(ctx: CanvasRenderingContext2D, x: number, w: number, day: nu
   poly(ctx, q(gx0, gz1 - 0.12, gx1, gz1), grad(ctx, iso(gx0, 0, gz1), iso(gx0, 0, gz1 - 0.12), 'rgba(0,0,0,0.22)', 'rgba(0,0,0,0)'))
   poly(ctx, [iso(gx0, 0, gz0), iso(gx0 + 0.45, 0, gz0), iso(gx0 + 0.15, 0, gz1), iso(gx0, 0, gz1)], 'rgba(255,255,255,0.14)')
   ctx.restore()
-  // Mullions.
-  ctx.strokeStyle = '#ffffff'
-  ctx.lineWidth = 1.8
-  ctx.beginPath()
-  const m1 = iso(x + w / 2, 0, gz0), m2 = iso(x + w / 2, 0, gz1)
-  const h1 = iso(gx0, 0, z0 + h * 0.66), h2 = iso(gx1, 0, z0 + h * 0.66)
-  ctx.moveTo(m1.x, m1.y); ctx.lineTo(m2.x, m2.y); ctx.moveTo(h1.x, h1.y); ctx.lineTo(h2.x, h2.y)
-  ctx.stroke()
   // Sill and roller blind.
   box(ctx, x - 0.1, 0, z0 - 0.14, w + 0.2, 0.2, 0.09, '#ffffff', { edge: false })
   box(ctx, x - 0.04, 0, z0 + h - 0.04, w + 0.08, 0.1, 0.16, '#efe9e1', { edge: false })
@@ -712,7 +736,7 @@ function drawWallScreen(ctx: CanvasRenderingContext2D, s: SessionState, now: num
     ctx.textBaseline = 'top'
     ctx.fillText('ACTIVITY', 0, 0)
     ctx.fillStyle = s.status === 'working' ? '#4fe39b' : s.status === 'waiting' ? '#ffb547' : 'rgba(255,255,255,0.4)'
-    ctx.beginPath(); ctx.arc(72, 3.5, 2, 0, Math.PI * 2); ctx.fill()
+    ctx.beginPath(); ctx.arc((x1 - x0 - 0.16) * (TW / 2) - 5, 3.5, 2, 0, Math.PI * 2); ctx.fill()
   })
   void hc
 }
@@ -775,14 +799,15 @@ function drawDesk(ctx: CanvasRenderingContext2D, desk: Desk, activity: Activity 
     for (const mx of [x + 0.4, x + 1.32]) {
       box(ctx, mx + 0.28, y + 0.5, Z, 0.3, 0.16, 0.03, M.steel, { edge: false })
       box(ctx, mx + 0.4, y + 0.55, Z + 0.03, 0.06, 0.05, 0.2, M.steel, { lit: false, edge: false })
-      box(ctx, mx, y + 0.56, Z + 0.22, 0.86, 0.05, 0.52, M.screen, { left: grad(ctx, iso(mx, y + 0.61, Z + 0.74), iso(mx, y + 0.61, Z + 0.22), '#3a3f52', '#262a38') })
-      const logo = iso(mx + 0.43, y + 0.61, Z + 0.46)
-      ctx.fillStyle = active ? sc : 'rgba(255,255,255,0.35)'
-      ctx.beginPath(); ctx.arc(logo.x, logo.y, 2, 0, Math.PI * 2); ctx.fill()
-      // Rim light from the screen leaking around the edge, and its pool on the keyboard side.
-      const rim = iso(mx + 0.43, y + 0.52, Z + 0.5)
-      lights.push({ p: rim, rx: 34, ry: 30, color: sc, day: screenGlow * 0.3, night: screenGlow * 1.5 + 0.1 })
+      box(ctx, mx, y + 0.56, Z + 0.22, 0.86, 0.05, 0.52, '#4e5366', { left: grad(ctx, iso(mx, y + 0.61, Z + 0.74), iso(mx, y + 0.61, Z + 0.22), '#5d6378', '#444a5c') })
+      // Vent slot and a small badge on the back of the panel.
+      line(ctx, iso(mx + 0.12, y + 0.615, Z + 0.3), iso(mx + 0.74, y + 0.615, Z + 0.3), 'rgba(0,0,0,0.25)', 1.2)
+      const logo = iso(mx + 0.43, y + 0.615, Z + 0.5)
+      ctx.fillStyle = 'rgba(255,255,255,0.3)'
+      ctx.beginPath(); ctx.arc(logo.x, logo.y, 1.6, 0, Math.PI * 2); ctx.fill()
+      // The screen faces the lead: its light lands on the keyboard side and the lead's face.
       lights.push({ p: iso(mx + 0.43, y + 0.05, Z + 0.1), rx: 46, ry: 26, color: sc, day: screenGlow * 0.3, night: screenGlow * 1.2 })
+      lights.push({ p: iso(mx + 0.43, y - 0.45, Z + 0.6), rx: 30, ry: 26, color: sc, day: screenGlow * 0.25, night: screenGlow * 0.9 })
     }
     drawMug(ctx, x + 2.22, y + 0.72, Z, '#e07a5f')
     drawMiniPlant(ctx, x + 0.14, y + 0.82, Z, now)
@@ -849,9 +874,10 @@ function drawDeskLamp(ctx: CanvasRenderingContext2D, x: number, y: number, z: nu
   lights.push({ p: bulb, rx: 18, ry: 12, color: '#ffe2b0', day: 0, night: 0.45 })
 }
 
-function drawChair(ctx: CanvasRenderingContext2D, sx: number, sy: number, hc: string): void {
+function drawChair(ctx: CanvasRenderingContext2D, sx: number, sy: number, hc: string, k = 1): void {
   const fabric = mix('#3d4460', hc, 0.38)
   const metal = '#565b6e'
+  const W = 0.52 * k, B = 0.3 * k, H = 0.34 * k
   // Five-star base with casters.
   const c = iso(sx, sy, 0.03)
   for (let i = 0; i < 5; i++) {
@@ -862,40 +888,39 @@ function drawChair(ctx: CanvasRenderingContext2D, sx: number, sy: number, hc: st
     ctx.beginPath(); ctx.ellipse(e.x, e.y + 1, 2.2, 1.4, 0, 0, Math.PI * 2); ctx.fill()
   }
   cyl(ctx, sx, sy, 0.03, 0.045, 0.32, metal)
-  box(ctx, sx - 0.26, sy - 0.24, 0.33, 0.52, 0.5, 0.12, fabric, { top: shade(fabric, 0.18) })
+  box(ctx, sx - W / 2, sy - 0.24, 0.33, W, 0.5, 0.12, fabric, { top: shade(fabric, 0.18) })
   // Backrest: a slim frame with a padded, lighter upper half.
-  box(ctx, sx - 0.24, sy - 0.33, 0.45, 0.48, 0.09, 0.3, shade(fabric, -0.08), { top: shade(fabric, 0.05) })
-  box(ctx, sx - 0.25, sy - 0.35, 0.75, 0.5, 0.11, 0.34, fabric, { top: shade(fabric, 0.2) })
+  box(ctx, sx - W / 2 + 0.02, sy - 0.33, 0.45, W - 0.04, 0.09, B, shade(fabric, -0.08), { top: shade(fabric, 0.05) })
+  box(ctx, sx - W / 2 + 0.01, sy - 0.35, 0.45 + B, W - 0.02, 0.11, H, fabric, { top: shade(fabric, 0.2) })
 }
 
 const SOFA = '#7d8fd6'
+const SEAT_Z = 0.59
 
-/** Base, back, back cushions and the far arm: everything a lounger sits in front of. */
+/** Frame, backrest with cushions, far arm and the seat: everything a lounger sits on or in front of. */
 function drawCouchBack(ctx: CanvasRenderingContext2D): void {
   const { x, y, w, d } = COUCH
   const c = SOFA
-  box(ctx, x, y, 0, w, d, 0.42, shade(c, -0.1))
-  box(ctx, x, y, 0.42, w, 0.3, 0.56, c, { top: shade(c, 0.16) })
+  box(ctx, x, y, 0, w, d, 0.45, shade(c, -0.12))
+  box(ctx, x, y, 0.45, w, 0.28, 0.75, c, { top: shade(c, 0.16) })
   for (let i = 0; i < 3; i++) {
-    const cx = x + 0.07 + i * (w / 3), cw = w / 3 - 0.14
-    box(ctx, cx, y + 0.3, 0.46, cw, 0.14, 0.44, shade(c, 0.05), { top: shade(c, 0.24) })
-    // A soft crease across the middle of each back cushion.
-    line(ctx, iso(cx + 0.05, y + 0.44, 0.68), iso(cx + cw - 0.05, y + 0.44, 0.68), 'rgba(0,0,0,0.08)', 1)
+    const cx = x + 0.06 + i * (w / 3), cw = w / 3 - 0.12
+    box(ctx, cx, y + 0.28, 0.5, cw, 0.14, 0.62, shade(c, 0.08), { top: shade(c, 0.28) })
   }
-  box(ctx, x - 0.26, y, 0, 0.26, d, 0.7, shade(c, -0.02), { top: shade(c, 0.14) })
-  // Throw pillow leaning on the far cushion.
-  box(ctx, x + 0.14, y + 0.44, 0.54, 0.34, 0.1, 0.32, '#f6bd60', { top: '#ffd68a' })
+  box(ctx, x - 0.3, y, 0, 0.3, d, 0.92, shade(c, -0.02), { top: shade(c, 0.14) })
+  // One seat cushion with seams, not three loose blocks.
+  box(ctx, x, y + 0.42, 0.45, w, d - 0.42, SEAT_Z - 0.45, shade(c, 0.04), { top: shade(c, 0.22) })
+  for (let i = 1; i < 3; i++) {
+    const sx = x + i * (w / 3)
+    line(ctx, iso(sx, y + 0.44, SEAT_Z + 0.002), iso(sx, y + d - 0.02, SEAT_Z + 0.002), 'rgba(30,30,70,0.22)', 1.2)
+  }
 }
 
-/** Seat cushions and the near arm, drawn after the loungers so they sink into the seat. */
+/** The near arm, drawn after the loungers so it sits in front of the last one. */
 function drawCouchFront(ctx: CanvasRenderingContext2D): void {
-  const { x, y, w, d } = COUCH
+  const { x, y, d } = COUCH
   const c = SOFA
-  for (let i = 0; i < 3; i++) {
-    const cx = x + 0.04 + i * (w / 3), cw = w / 3 - 0.08
-    box(ctx, cx, y + 0.32, 0.42, cw, d - 0.36, 0.12, shade(c, 0.02), { top: shade(c, 0.2) })
-  }
-  box(ctx, x + w, y, 0, 0.26, d, 0.7, shade(c, -0.02), { top: shade(c, 0.14) })
+  box(ctx, x + COUCH.w, y, 0, 0.3, d, 0.92, shade(c, -0.02), { top: shade(c, 0.14) })
 }
 
 function drawSideTable(ctx: CanvasRenderingContext2D): void {
@@ -921,6 +946,12 @@ function drawFloorLamp(ctx: CanvasRenderingContext2D, lights: Light[], day: numb
   lights.push({ p: iso(x, y, 1.6), rx: 44, ry: 40, color: '#ffdca6', day: 0, night: 0.4 })
 }
 
+/** A flat plate on a +x face, centred at (x, yc, zc): `len` along y, `hgt` along z. */
+function onFaceX(ctx: CanvasRenderingContext2D, x: number, yc: number, zc: number, len: number, hgt: number, fill: string): void {
+  const x1 = x + 0.004
+  poly(ctx, [iso(x1, yc - len / 2, zc - hgt / 2), iso(x1, yc + len / 2, zc - hgt / 2), iso(x1, yc + len / 2, zc + hgt / 2), iso(x1, yc - len / 2, zc + hgt / 2)], fill)
+}
+
 function drawCabinet(ctx: CanvasRenderingContext2D): void {
   const { x, y, w, d, h } = CABINET
   const c = '#9aa6c4'
@@ -929,12 +960,10 @@ function drawCabinet(ctx: CanvasRenderingContext2D): void {
     const z0 = 0.08 + i * (h / 3), z1 = z0 + h / 3 - 0.06
     poly(ctx, [iso(x + w, y + 0.06, z0), iso(x + w, y + d - 0.06, z0), iso(x + w, y + d - 0.06, z1), iso(x + w, y + 0.06, z1)], shade(c, -0.3))
     poly(ctx, [iso(x + w, y + 0.08, z0 + 0.02), iso(x + w, y + d - 0.08, z0 + 0.02), iso(x + w, y + d - 0.08, z1 - 0.02), iso(x + w, y + 0.08, z1 - 0.02)], shade(c, -0.2))
-    const k = iso(x + w + 0.01, y + d / 2, z0 + 0.2)
-    ctx.fillStyle = '#e8ecf5'
-    ctx.fillRect(k.x - 4, k.y - 1, 8, 2)
-    const lbl = iso(x + w + 0.01, y + d / 2, z1 - 0.07)
-    ctx.fillStyle = 'rgba(255,255,255,0.75)'
-    ctx.fillRect(lbl.x - 5, lbl.y - 2, 10, 3)
+    // Handle and label plate lie on the drawer front, so they follow its slant.
+    onFaceX(ctx, x + w, y + d / 2, z0 + 0.2, 0.26, 0.05, '#e8ecf5')
+    onFaceX(ctx, x + w, y + d / 2, z0 + 0.17, 0.26, 0.015, 'rgba(0,0,0,0.25)')
+    onFaceX(ctx, x + w, y + d / 2, z1 - 0.09, 0.3, 0.09, 'rgba(255,255,255,0.8)')
   }
   // Something on top: a tray and a small radio.
   box(ctx, x + 0.1, y + 0.1, h, 0.5, 0.3, 0.03, '#e3d6c4', { edge: false })
@@ -949,15 +978,13 @@ function drawCounter(ctx: CanvasRenderingContext2D, now: number, lights: Light[]
   for (let i = 0; i < 2; i++) {
     const y0 = y + 0.1 + i * (d / 2), y1 = y0 + d / 2 - 0.2
     poly(ctx, [iso(x + w, y0, 0.1), iso(x + w, y1, 0.1), iso(x + w, y1, h - 0.16), iso(x + w, y0, h - 0.16)], 'rgba(0,0,0,0.07)')
-    const k = iso(x + w + 0.01, y1 - 0.08, h / 2)
-    ctx.fillStyle = '#9aa0ad'
-    ctx.fillRect(k.x - 1, k.y - 4, 2, 7)
+    onFaceX(ctx, x + w, y1 - 0.1, h / 2, 0.04, 0.22, '#9aa0ad')
   }
   // Espresso machine.
   box(ctx, x + 0.08, y + 0.2, h, 0.6, 0.55, 0.62, '#3a3e4e')
   box(ctx, x + 0.08, y + 0.2, h + 0.62, 0.6, 0.55, 0.06, '#50556a', { top: '#5d6378' })
   box(ctx, x + 0.68, y + 0.3, h + 0.2, 0.03, 0.34, 0.1, '#ff8a4c', { edge: false })
-  box(ctx, x + 0.3, y + 0.75, h, 0.2, 0.08, 0.12, '#8a8f9f', { edge: false })
+  box(ctx, x + 0.16, y + 0.74, h, 0.44, 0.16, 0.035, '#8a8f9f', { edge: false })
   const led = iso(x + 0.69, y + 0.6, h + 0.48)
   ctx.fillStyle = '#4fe39b'
   ctx.beginPath(); ctx.arc(led.x, led.y, 1.4, 0, Math.PI * 2); ctx.fill()
@@ -1018,9 +1045,6 @@ function drawShelf(ctx: CanvasRenderingContext2D): void {
         break
       }
       box(ctx, bx, y + 0.1, z + 0.05, bw, d - 0.14, bh, colors[i % colors.length]!, { lit: false, edge: false })
-      const sp = iso(bx + bw / 2, y + d - 0.04, z + 0.05 + bh * 0.72)
-      ctx.fillStyle = 'rgba(255,255,255,0.45)'
-      ctx.fillRect(sp.x - 1, sp.y, 2, 1.2)
       bx += bw + 0.015
       i++
     }
@@ -1157,10 +1181,11 @@ function drawWorker(ctx: CanvasRenderingContext2D, c: Char, activity: Activity, 
   const art = blobArt(c.seed, activity)
   const m = blobMotion(activity, walking, t, c.phase)
   if (seated || lounging) { m.dy = Math.max(m.dy * 0.4, -5); m.rot *= 0.6; m.dx *= 0.5 }
+  if (lounging) { m.dy = Math.min(0, m.dy) * 0.3; m.sy *= 0.9; m.sx *= 1.08 }
   const blink = now >= c.blinkAt && now < c.blinkAt + 140 ? 0.08 : activity === 'sleeping' ? 0.12 : 1
   drawBlob(ctx, art, foot.x, foot.y, {
     // Loungers are drawn a touch smaller so three of them fit the sofa without hiding each other's faces.
-    size: lounging ? BLOB * 0.82 : BLOB, facing: c.facing, eyes: blink, sx: m.sx, sy: m.sy, rot: m.rot, dx: m.dx, dyExtra: m.dy,
+    size: lounging ? BLOB * 0.74 : BLOB, facing: c.facing, eyes: blink, sx: m.sx, sy: m.sy, rot: m.rot, dx: m.dx, dyExtra: m.dy,
     headset: c.isRoot, dim: activity === 'sleeping' ? 1 : activity === 'idle' ? 0.3 : 0,
     // The night wash multiplies everything afterwards; blobs are pre-lit so faces stay readable.
     lift: 1 - day,
@@ -1177,7 +1202,7 @@ function drawWorker(ctx: CanvasRenderingContext2D, c: Char, activity: Activity, 
   }
   ctx.restore()
 
-  const s = (lounging ? BLOB * 0.82 : BLOB) / 100
+  const s = (lounging ? BLOB * 0.74 : BLOB) / 100
   const top = foot.y - (art.bottom - (art.frame.cy - art.frame.ry) - art.dy - m.dy) * s * m.sy
   return { head: { x: foot.x + m.dx * s, y: top }, foot: { x: foot.x, y: foot.y + (lounging ? 6 : seated ? 3 : 0) }, hip: { x: foot.x, y: foot.y - 10 } }
 }
@@ -1263,7 +1288,7 @@ function drawOverlay(ctx: CanvasRenderingContext2D, origin: Pt, pos: WorkerPos, 
     }
   } else if (act.tool) {
     const cat = CATEGORY[act.tool.category]
-    chip(ctx, x, y - 6, `${cat?.glyph ?? '•'} ${act.tool.title}`, cat?.color ?? '#9aa3b5', focus || cam.zoom > 1.25 ? 46 : 22)
+    chip(ctx, x, y - 12, `${cat?.glyph ?? '•'} ${act.tool.title}`, cat?.color ?? '#9aa3b5', focus || cam.zoom > 1.25 ? 46 : 22)
   }
   ctx.restore()
 }
@@ -1342,7 +1367,8 @@ function drawDiffBubble(ctx: CanvasRenderingContext2D, room: Room, e: Extract<Ef
   if (now < e.born) return
   const age = now - e.born
   const head = heads.get(`${room.id}/${e.agentId}`) ?? iso(e.at.x, e.at.y, e.at.z)
-  const anchor = { x: head.x + 16, y: head.y - 26 - stack * 10 }
+  // Above the tool chip, which hangs just over the head.
+  const anchor = { x: head.x + 16, y: head.y - 44 - stack * 10 }
   const flyK = clamp((age - e.typeMs - e.holdMs) / DIFF_FLY_MS, 0, 1)
   const typedChars = Math.floor(e.chars * easeOut(clamp(age / e.typeMs, 0, 1)))
   const W = 196, LH = 11.5, HEAD = 17

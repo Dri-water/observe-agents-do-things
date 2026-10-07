@@ -22,6 +22,23 @@ export interface BlobArt {
 
 const cache = new Map<string, BlobArt>()
 
+/** Largest y in an absolute SVG path (M/L/C/Q/H/V/Z, as blobatar emits). Control points can only overshoot by a hair. */
+function pathMaxY(d: string): number {
+  let max = -Infinity, cmd = 'M', i = 0
+  const nums: number[] = []
+  const flush = () => {
+    if (cmd === 'V') for (const v of nums) max = Math.max(max, v)
+    else if (cmd !== 'H') for (let k = 1; k < nums.length; k += 2) max = Math.max(max, nums[k]!)
+    nums.length = 0
+  }
+  for (const tok of d.match(/[A-Za-z]|-?[\d.]+(?:e-?\d+)?/g) ?? []) {
+    if (/[A-Za-z]/.test(tok)) { flush(); cmd = tok.toUpperCase(); i++ }
+    else nums.push(Number(tok))
+  }
+  flush()
+  return Number.isFinite(max) ? max : 88
+}
+
 function toPath(m: Mark): Path2D {
   if (m.kind === 'circle') {
     const p = new Path2D()
@@ -45,8 +62,10 @@ export function blobArt(seed: string, activity: Activity): BlobArt {
   const eyes = m.marks.slice(split).map((mk, i) => ({ path: toPath(mk), fill: mk.fill, cx: lay.eyes[i]!.cx, cy: lay.eyes[i]!.cy }))
   const dy = Number(/translate\(0 (-?[\d.]+)\)/.exec(m.transform)?.[1] ?? 0)
   const b = lay.body
-  let bottom = b.cy + b.ry
-  for (const p of lay.petals) bottom = Math.max(bottom, p.cy + p.r)
+  // The lowest point of the drawn figure, not of its bounding ellipse: a
+  // triangle ends well above cy + ry and a rotated boxy shape dips below it.
+  let bottom = 0
+  for (const mk of m.marks.slice(0, split)) bottom = Math.max(bottom, mk.kind === 'circle' ? mk.cy + mk.r : pathMaxY(mk.d))
   const art: BlobArt = { body, eyes, dy, frame: { cx: b.cx, cy: b.cy, rx: b.rx, ry: b.ry }, bottom }
   if (cache.size > 600) cache.clear()
   cache.set(key, art)

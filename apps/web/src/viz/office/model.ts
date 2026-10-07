@@ -32,12 +32,12 @@ export const DOOR = { x: 9.6, w: 1.25, h: 2.05 }
 export const WINDOWS = [{ x: 1.0, w: 1.9 }, { x: 3.4, w: 1.9 }]
 export const CABINET = { x: 0.05, y: 4.55, w: 0.75, d: 0.75, h: 1.25 }
 export const COUNTER = { x: 0.05, y: 6.3, w: 0.85, d: 2.3, h: 0.95 }
-export const COUCH = { x: 8.3, y: 7.9, w: 2.7, d: 1.0 }
-export const SIDE_TABLE = { x: 7.55, y: 8.4 }
-export const FLOOR_LAMP = { x: 7.45, y: 7.75 }
+export const COUCH = { x: 8.3, y: 7.55, w: 2.7, d: 1.0 }
+export const SIDE_TABLE = { x: 11.68, y: 7.9 }
+export const FLOOR_LAMP = { x: 11.66, y: 7.2 }
 export const DOORMAT = { x: 9.5, y: 0.1, w: 1.45, d: 0.62 }
 export const SHELF = { x: 6.0, y: 0.05, w: 1.6, d: 0.5, h: 1.9 }
-const COUCH_SPOTS: Pt[] = [{ x: 8.62, y: 8.52 }, { x: 9.65, y: 8.52 }, { x: 10.68, y: 8.52 }]
+const COUCH_SPOTS: Pt[] = [{ x: 8.92, y: 8.26 }, { x: 9.65, y: 8.26 }, { x: 10.38, y: 8.26 }]
 const STAND_SPOTS: Pt[] = [{ x: 1.45, y: 6.7 }, { x: 1.5, y: 7.5 }, { x: 1.45, y: 8.3 }, { x: 4.6, y: 8.4 }, { x: 6.2, y: 8.4 }]
 
 function deskLayout(): Desk[] {
@@ -410,7 +410,7 @@ function parsePlan(title: string): { done: number; total: number; label: string 
   return { done: Number(m[1]), total: Math.max(1, Number(m[2])), label }
 }
 
-const CAT_SPOTS: Pt[] = [{ x: 3.2, y: 2.4 }, { x: 7.8, y: 5.3 }, { x: 5.0, y: 8.2 }, { x: 10.6, y: 4.6 }, { x: 1.4, y: 4.2 }, { x: 7.0, y: 7.6 }]
+const CAT_SPOTS: Pt[] = [{ x: 3.2, y: 2.4 }, { x: 7.8, y: 5.3 }, { x: 5.0, y: 8.2 }, { x: 10.6, y: 4.6 }, { x: 1.4, y: 4.2 }, { x: 6.4, y: 7.9 }]
 
 function stepCat(room: Room, dt: number, now: number): void {
   const cat = room.cat
