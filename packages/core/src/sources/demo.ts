@@ -1,6 +1,7 @@
 /**
- * A scripted, endlessly looping simulation of two coding sessions — one Claude
- * Code, one Codex — with subagents, failing tests, permission waits and fixes.
+ * A scripted, endlessly looping simulation of several coding sessions across
+ * Claude Code and Codex: subagents, web research, MCP tools, questions for the
+ * user, failing tests, permission waits, interruptions and fixes.
  * Used for `oadt --demo`, screenshots, and frontend development. No real data.
  */
 import type { EventDraft, FileChange, FileRef, ToolCategory } from '@oadt/protocol'
@@ -31,6 +32,8 @@ class Actor {
     readonly sessionId: string,
     readonly agentId: string,
     private model: string,
+    /** Range the simulated context fill wanders in (tokens). */
+    private ctx: [number, number] = [20_000, 80_000],
   ) {}
 
   send(body: Body): void {
@@ -50,7 +53,7 @@ class Actor {
   }
 
   tokens(out: number): void {
-    const ctx = 20_000 + Math.random() * 60_000
+    const ctx = this.ctx[0] + Math.random() * (this.ctx[1] - this.ctx[0])
     this.send({
       kind: 'usage',
       model: this.model,
@@ -277,6 +280,182 @@ async function codexSession(emit: Emit, clock: Clock): Promise<void> {
   }
 }
 
+const LOGIN_TS = [
+  "import { setTimeout as sleep } from 'node:timers/promises'",
+  "import { keychain } from '../keychain'",
+  "",
+  "const CLIENT_ID = 'atlas-cli'",
+  "",
+  "/** `atlas login`: OAuth 2.0 device authorization grant (RFC 8628). */",
+  "export async function login(api: string): Promise<void> {",
+  "  const code = await post(`${api}/oauth/device/code`, { client_id: CLIENT_ID })",
+  "  console.log(`Open ${code.verification_uri} and enter ${code.user_code}`)",
+  "  for (let interval = code.interval; ; ) {",
+  "    await sleep(interval * 1000)",
+  "    const res = await post(`${api}/oauth/token`, {",
+  "      client_id: CLIENT_ID,",
+  "      device_code: code.device_code,",
+  "      grant_type: 'urn:ietf:params:oauth:grant-type:device_code',",
+  "    })",
+  "    if (res.error === 'authorization_pending') continue",
+  "    if (res.error === 'slow_down') { interval += 5; continue }",
+  "    if (res.error) throw new Error(`login failed: ${res.error}`)",
+  "    await keychain.set('atlas', res.access_token)",
+  "    return console.log('Logged in.')",
+  "  }",
+  "}",
+].join('\n')
+
+const PATHS_FIX = [
+  "*** Begin Patch",
+  "*** Update File: src/paths.rs",
+  "@@ pub fn cache_key(path: &Path) -> String",
+  "-    path.to_string_lossy().to_string()",
+  "+    // Windows runners hand us `C:\\x\\y`; everything else uses `/`.",
+  "+    path.components()",
+  "+        .map(|c| c.as_os_str().to_string_lossy())",
+  "+        .collect::<Vec<_>>()",
+  "+        .join(\"/\")",
+  "*** Update File: .github/workflows/ci.yml",
+  "@@ jobs:",
+  "       - run: cargo test --all-features",
+  "+        env:",
+  "+          RUST_TEST_THREADS: 4",
+  "*** End Patch",
+].join('\n')
+
+const THEME_TOGGLE = [
+  "import { useEffect, useState } from 'react'",
+  "",
+  "type Theme = 'light' | 'dark' | 'system'",
+  "",
+  "export function ThemeToggle() {",
+  "  const [theme, setTheme] = useState<Theme>(() => (localStorage.theme as Theme) ?? 'system')",
+  "  useEffect(() => {",
+  "    const dark = theme === 'dark' || (theme === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)",
+  "    document.documentElement.dataset.theme = dark ? 'dark' : 'light'",
+  "    localStorage.theme = theme",
+  "  }, [theme])",
+  "  return (",
+  "    <select value={theme} onChange={(e) => setTheme(e.target.value as Theme)} aria-label=\"Theme\">",
+  "      <option value=\"system\">System</option>",
+  "      <option value=\"light\">Light</option>",
+  "      <option value=\"dark\">Dark</option>",
+  "    </select>",
+  "  )",
+  "}",
+].join('\n')
+
+/** Claude Code researching the web, asking the user a question and opening a PR through MCP. */
+async function loginSession(emit: Emit, clock: Clock): Promise<void> {
+  const sessionId = uid('demo-claude')
+  const root = '/home/dev/atlas-cli'
+  const main = new Actor(emit, clock, 'claude-code', sessionId, sessionId, 'claude-sonnet-demo')
+  await clock.sleep(1500)
+  main.send({ kind: 'session.started', meta: { cwd: root, project: 'atlas-cli', gitBranch: 'feat/device-login', entrypoint: 'vscode', model: 'claude-sonnet-demo', demo: true, title: 'atlas login via device flow', titleSource: 'custom' } })
+  let cost = 0
+  for (let round = 0; !clock.stopped; round++) {
+    main.send({ kind: 'turn.started', turnId: uid('turn') })
+    main.send({ kind: 'message', role: 'user', text: round % 2 === 0 ? 'Add `atlas login` using the OAuth device flow. Check the spec first.' : 'Handle slow_down properly and open a PR.' })
+    await clock.sleep(600)
+    await main.think(1400, 'The device grant is RFC 8628. Read it before writing the polling loop.')
+    await main.tool('WebSearch', 'web', 'WebSearch "OAuth device authorization grant RFC 8628"', { ms: 1600 })
+    await main.tool('WebFetch', 'web', 'WebFetch datatracker.ietf.org/doc/html/rfc8628', { ms: 2200, output: 'Section 3.5: slow_down means increase the interval by 5 seconds.' })
+    await Promise.all([
+      main.tool('Read', 'read', 'Read src/commands/index.ts', { files: read(`${root}/src/commands/index.ts`), ms: 500 }),
+      main.tool('Grep', 'search', 'Grep "keychain" in src', { ms: 700 }),
+    ])
+    const ask = main.start('AskUserQuestion', 'interact', 'Store the token in the OS keychain or ~/.atlas/credentials?', [], { question: 'Where should the token live?' })
+    await clock.sleep(5200)
+    main.finish(ask, true, 'OS keychain')
+    main.send({ kind: 'message', role: 'user', text: 'OS keychain, please.' })
+    await main.tool('Write', 'write', 'Write src/commands/login.ts', { files: write(`${root}/src/commands/login.ts`), ms: 1500, changes: claudeChanges('Write', { file_path: `${root}/src/commands/login.ts`, content: LOGIN_TS }) })
+    await main.tool('Edit', 'edit', 'Edit src/commands/index.ts', { files: edit(`${root}/src/commands/index.ts`), ms: 800, changes: claudeChanges('Edit', { file_path: `${root}/src/commands/index.ts`, old_string: "export const commands = {\n  status,\n  deploy,\n}", new_string: "export const commands = {\n  status,\n  deploy,\n  login,\n}" }) })
+    await main.tool('Bash', 'shell', '$ npm run build', { ms: 2600, output: 'built in 1.9s' })
+    await main.tool('Bash', 'shell', '$ npm test -- login', { ms: 2200, output: '6 passing' })
+    await main.tool('mcp__github__create_pull_request', 'mcp', 'github · create_pull_request "atlas login via device flow"', { ms: 1800, output: 'https://github.com/example/atlas-cli/pull/214' })
+    await main.say('Added `atlas login` (RFC 8628 device flow): polls with backoff on slow_down and stores the token in the OS keychain. PR #214 is open.')
+    cost += 0.2 + Math.random() * 0.2
+    main.send({ kind: 'session.updated', meta: { costUsd: Number(cost.toFixed(2)), prUrl: 'https://github.com/example/atlas-cli/pull/214' } })
+    main.send({ kind: 'turn.ended', outcome: 'completed' })
+    await clock.sleep(9000)
+  }
+}
+
+/** Codex chasing a flaky test: a run of failures, a fix, and now and then an interrupted turn. */
+async function flakySession(emit: Emit, clock: Clock): Promise<void> {
+  const sessionId = uid('demo-codex')
+  const root = '/home/dev/quarry'
+  const main = new Actor(emit, clock, 'codex', sessionId, sessionId, 'gpt-codex-demo')
+  await clock.sleep(6000)
+  main.send({ kind: 'session.started', meta: { cwd: root, project: 'quarry', gitBranch: 'fix/windows-ci', entrypoint: 'codex-cli', model: 'gpt-codex-demo', demo: true } })
+  main.send({ kind: 'session.updated', meta: { title: 'Fix flaky Windows CI', titleSource: 'custom' } })
+  for (let round = 0; !clock.stopped; round++) {
+    main.send({ kind: 'turn.started', turnId: uid('turn') })
+    main.send({ kind: 'message', role: 'user', text: 'CI keeps failing on the Windows runner. Find out why and fix it.' })
+    await clock.sleep(700)
+    await main.tool('exec', 'shell', '$ gh run view 4821 --log-failed', { ms: 1800, output: 'paths::tests::cache_key_is_stable FAILED' })
+    await main.tool('exec', 'read', 'View .github/workflows/ci.yml', { files: read(`${root}/.github/workflows/ci.yml`), ms: 600 })
+    for (let i = 0; i < 3; i++) {
+      await main.tool('exec', 'shell', `$ cargo test cache_key ${i ? '-- --test-threads=1' : ''}`.trim(), { ms: 1700, ok: false, output: 'assertion failed: left == right\n  left: "C:\\\\tmp\\\\a"\n right: "C:/tmp/a"' })
+      await main.think(900)
+    }
+    if (round % 3 === 2) {
+      main.send({ kind: 'turn.ended', outcome: 'aborted' })
+      await clock.sleep(8000)
+      continue
+    }
+    await main.tool('exec', 'read', 'View src/paths.rs', { files: read(`${root}/src/paths.rs`), ms: 700 })
+    await main.tool('apply_patch', 'edit', 'Patch src/paths.rs +1', { files: [...edit(`${root}/src/paths.rs`), ...edit(`${root}/.github/workflows/ci.yml`)], ms: 1200, changes: patchChanges(PATHS_FIX) })
+    await main.tool('exec', 'shell', '$ cargo test', { ms: 3000, output: 'test result: ok. 87 passed' })
+    await main.say('Cache keys used the platform separator, so Windows produced different keys. They are now joined with `/` on every platform; 87 tests pass.')
+    main.send({ kind: 'turn.ended', outcome: 'completed' })
+    await clock.sleep(11_000)
+  }
+}
+
+/** Claude Code fanning out three explorers on a nearly full context window. */
+async function themeSession(emit: Emit, clock: Clock): Promise<void> {
+  const sessionId = uid('demo-claude')
+  const root = '/home/dev/lumen-docs'
+  const main = new Actor(emit, clock, 'claude-code', sessionId, sessionId, 'claude-opus-demo', [171_000, 182_000])
+  await clock.sleep(3000)
+  main.send({ kind: 'session.started', meta: { cwd: root, project: 'lumen-docs', gitBranch: 'feat/dark-mode', entrypoint: 'cli', model: 'claude-opus-demo', demo: true, title: 'Docs site dark mode', titleSource: 'custom' } })
+  for (let round = 0; !clock.stopped; round++) {
+    main.send({ kind: 'turn.started', turnId: uid('turn') })
+    main.send({ kind: 'message', role: 'user', text: 'Add a dark mode toggle to the docs site that follows the system setting.' })
+    await clock.sleep(500)
+    await main.think(1200)
+    const scouts = [
+      { name: 'Theme tokens', steps: [['Glob', 'search', 'Glob src/styles/**/*.css'], ['Read', 'read', 'Read src/styles/tokens.css'], ['Read', 'read', 'Read src/styles/base.css']] },
+      { name: 'Hard-coded colours', steps: [['Grep', 'search', 'Grep "#[0-9a-f]{6}" in src/components'], ['Read', 'read', 'Read src/components/Callout.tsx'], ['Read', 'read', 'Read src/components/CodeBlock.tsx']] },
+      { name: 'Component tests', steps: [['Glob', 'search', 'Glob test/**/*.test.tsx'], ['Read', 'read', 'Read test/Header.test.tsx']] },
+    ] as const
+    await Promise.all(scouts.map(async (sc) => {
+      const call = main.start('Agent', 'agent', `Explore: ${sc.name}`, [], { subagent_type: 'Explore' })
+      const sub = main.child(uid('agent'))
+      sub.send({ kind: 'agent.spawned', parentToolCallId: call, name: sc.name, role: 'Explore', task: sc.name })
+      for (const [tool, cat, title] of sc.steps) {
+        const file = title.startsWith('Read ') ? read(`${root}/${title.slice(5)}`) : []
+        await sub.tool(tool, cat, title, { files: file, ms: 900 + Math.random() * 1200 })
+      }
+      await sub.say(`${sc.name}: done.`)
+      sub.send({ kind: 'turn.ended', outcome: 'completed' })
+      main.finish(call, true, 'done')
+    }))
+    await main.tool('TodoWrite', 'plan', 'Todos 0/3 · Tokens for dark', { ms: 300 })
+    await main.tool('Edit', 'edit', 'Edit src/styles/tokens.css', { files: edit(`${root}/src/styles/tokens.css`), ms: 900, changes: claudeChanges('Edit', { file_path: `${root}/src/styles/tokens.css`, old_string: ":root {\n  --bg: #ffffff;\n  --fg: #1f2328;\n  --accent: #0969da;\n}", new_string: ":root {\n  --bg: #ffffff;\n  --fg: #1f2328;\n  --accent: #0969da;\n}\n\n:root[data-theme='dark'] {\n  --bg: #0d1117;\n  --fg: #e6edf3;\n  --accent: #4493f8;\n}" }) })
+    await main.tool('Write', 'write', 'Write src/components/ThemeToggle.tsx', { files: write(`${root}/src/components/ThemeToggle.tsx`), ms: 1300, changes: claudeChanges('Write', { file_path: `${root}/src/components/ThemeToggle.tsx`, content: THEME_TOGGLE }) })
+    await main.tool('Edit', 'edit', 'Edit src/components/Callout.tsx', { files: edit(`${root}/src/components/Callout.tsx`), ms: 700, changes: claudeChanges('Edit', { file_path: `${root}/src/components/Callout.tsx`, old_string: "  background: '#fff8c5',\n  color: '#1f2328',", new_string: "  background: 'var(--callout-bg)',\n  color: 'var(--fg)'," }) })
+    await main.tool('TodoWrite', 'plan', 'Todos 2/3 · Verify', { ms: 300 })
+    await main.tool('Bash', 'shell', '$ npm run build', { ms: 4200, output: 'built 214 pages in 3.8s' })
+    await main.tool('Bash', 'shell', '$ npm test', { ms: 2400, output: '48 passing' })
+    await main.say('Dark mode follows the system by default, with a toggle in the header. Colours come from tokens, so the callouts and code blocks switch too.')
+    main.send({ kind: 'turn.ended', outcome: 'completed' })
+    await clock.sleep(8000)
+  }
+}
+
 export class DemoSource implements Source {
   readonly name = 'demo'
   private clock: Clock
@@ -288,6 +467,9 @@ export class DemoSource implements Source {
   async start(emit: Emit): Promise<void> {
     void claudeSession(emit, this.clock)
     void codexSession(emit, this.clock)
+    void loginSession(emit, this.clock)
+    void flakySession(emit, this.clock)
+    void themeSession(emit, this.clock)
   }
 
   stop(): void {
