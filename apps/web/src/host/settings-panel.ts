@@ -3,6 +3,7 @@
  *
  *   Visualizations      list of visualizations: use one, or configure it
  *     › <visualization> that visualization's own settings
+ *   Display             zoom
  *   Notifications       alerts shared by every visualization
  *   Keyboard shortcuts  reference
  *   About               version and connection
@@ -11,7 +12,7 @@ import type { ObserverClient } from '@oadt/client'
 import { h } from '../shared/dom'
 import type { Visualization } from '../viz/types'
 import type { AttentionService } from './attention'
-import { NOTIFICATION_SETTINGS, type SettingDef, type Settings } from './settings'
+import { DISPLAY_SETTINGS, NOTIFICATION_SETTINGS, type SettingDef, type Settings } from './settings'
 
 export interface PanelOptions {
   settings: Settings
@@ -21,10 +22,11 @@ export interface PanelOptions {
   active: () => string | undefined
 }
 
-type Page = 'visualizations' | 'notifications' | 'shortcuts' | 'about' | `viz:${string}`
+type Page = 'visualizations' | 'display' | 'notifications' | 'shortcuts' | 'about' | `viz:${string}`
 
 const PAGES: Array<{ id: Page; title: string }> = [
   { id: 'visualizations', title: 'Visualizations' },
+  { id: 'display', title: 'Display' },
   { id: 'notifications', title: 'Notifications' },
   { id: 'shortcuts', title: 'Keyboard shortcuts' },
   { id: 'about', title: 'About' },
@@ -33,6 +35,9 @@ const PAGES: Array<{ id: Page; title: string }> = [
 const SHORTCUTS: Array<[string, string]> = [
   ['Ctrl + ,', 'Open or close settings'],
   ['V', 'Switch to the next visualization'],
+  ['Ctrl + +', 'Zoom in'],
+  ['Ctrl + −', 'Zoom out'],
+  ['Ctrl + 0', 'Reset zoom'],
   ['Esc', 'Close dialogs and panels'],
 ]
 
@@ -109,6 +114,7 @@ export class SettingsPanel {
 
   private pageContent(): Array<Node | string> {
     if (this.page === 'visualizations') return this.visualizationsPage()
+    if (this.page === 'display') return this.displayPage()
     if (this.page === 'notifications') return this.notificationsPage()
     if (this.page === 'shortcuts') return this.shortcutsPage()
     if (this.page === 'about') return this.aboutPage()
@@ -156,6 +162,10 @@ export class SettingsPanel {
     ]
   }
 
+  private displayPage(): Array<Node | string> {
+    return [h('h2', null, 'Display'), ...DISPLAY_SETTINGS.map((d) => this.row(d))]
+  }
+
   private notificationsPage(): Array<Node | string> {
     return [
       h('h2', null, 'Notifications'),
@@ -192,6 +202,7 @@ export class SettingsPanel {
   private searchResults(): Array<Node | string> {
     const q = this.query.trim().toLowerCase()
     const groups: Array<{ crumb: string; page: Page; defs: SettingDef[] }> = [
+      { crumb: 'Display', page: 'display', defs: DISPLAY_SETTINGS },
       { crumb: 'Notifications', page: 'notifications', defs: NOTIFICATION_SETTINGS },
       ...this.opts.visualizations.map((v) => ({
         crumb: `Visualizations › ${v.name}`,

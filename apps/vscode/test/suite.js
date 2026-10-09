@@ -32,6 +32,8 @@ exports.run = async function run() {
     .flatMap((g) => g.tabs)
     .find((t) => t.input instanceof vscode.TabInputWebview && t.input.viewType.endsWith('observeAgents')))
   assert.equal(tab.label, 'Agents', 'the dashboard opens in an editor tab')
+  await vscode.commands.executeCommand('observeAgents.showSidebar')
+  await vscode.commands.executeCommand('observeAgents.showPanel')
   console.log('vscode extension: observer started, dashboard tab open')
   if (process.env.OADT_HOLD_MS) await new Promise((r) => setTimeout(r, Number(process.env.OADT_HOLD_MS)))
 }

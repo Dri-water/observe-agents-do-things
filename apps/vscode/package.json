@@ -45,9 +45,19 @@
     "commands": [
       {
         "command": "observeAgents.open",
-        "title": "Open Dashboard",
+        "title": "Open Dashboard in Editor",
         "category": "Observe Agents",
-        "icon": "$(eye)"
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "observeAgents.showSidebar",
+        "title": "Show in Side Bar",
+        "category": "Observe Agents"
+      },
+      {
+        "command": "observeAgents.showPanel",
+        "title": "Show in Panel",
+        "category": "Observe Agents"
       },
       {
         "command": "observeAgents.openInBrowser",
@@ -79,6 +89,49 @@
           "description": "Show a VS Code notification when an agent is waiting for approval or keeps failing."
         }
       }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "observeAgents",
+          "title": "Observe Agents",
+          "icon": "media/agents.svg"
+        }
+      ],
+      "panel": [
+        {
+          "id": "observeAgentsPanel",
+          "title": "Agents",
+          "icon": "media/agents.svg"
+        }
+      ]
+    },
+    "views": {
+      "observeAgents": [
+        {
+          "type": "webview",
+          "id": "observeAgents.sidebar",
+          "name": "Agents",
+          "icon": "media/agents.svg"
+        }
+      ],
+      "observeAgentsPanel": [
+        {
+          "type": "webview",
+          "id": "observeAgents.panel",
+          "name": "Agents",
+          "icon": "media/agents.svg"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "observeAgents.open",
+          "when": "view == observeAgents.sidebar || view == observeAgents.panel",
+          "group": "navigation"
+        }
+      ]
     }
   },
   "scripts": {

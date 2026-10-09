@@ -79,6 +79,17 @@ export const THEME_SETTING: SettingDef = {
   ],
 }
 
+/** Zoom steps for Ctrl + and Ctrl − (percent). */
+export const ZOOM_LEVELS = [50, 67, 75, 80, 90, 100, 110, 125, 150, 175, 200]
+
+export const DISPLAY_SETTINGS: SettingDef[] = [
+  {
+    key: 'ui.zoom', label: 'Zoom', type: 'select', default: '100',
+    description: 'Size of everything in the app, in every visualization. Ctrl + and Ctrl − change it too, and Ctrl 0 resets it.',
+    options: ZOOM_LEVELS.map((z) => ({ value: String(z), label: `${z}%` })),
+  },
+]
+
 export const NOTIFICATION_SETTINGS: SettingDef[] = [
   { key: 'notify.desktop', label: 'Desktop notifications', type: 'toggle', default: false, description: 'Show a system notification when something needs you. Your browser will ask for permission.' },
   { key: 'notify.sound', label: 'Sound', type: 'toggle', default: false, description: 'Play a short chime with each alert.' },

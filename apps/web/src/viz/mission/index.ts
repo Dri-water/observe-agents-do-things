@@ -75,6 +75,7 @@ const TEMPLATE = `
   <header class="mc-title">
     <div class="mc-brand"><span class="mc-logo"></span>Mission Control</div>
     <button class="mc-attn-badge"></button>
+    <span class="mc-conn" role="status" hidden></span>
     <div class="mc-search"><input type="search" placeholder="Filter sessions (/)" spellcheck="false" aria-label="Filter sessions" /></div>
     <div class="mc-title-actions">
       <button class="mc-iconbtn mc-bell"></button>
@@ -104,7 +105,6 @@ const TEMPLATE = `
     </nav>
     <div class="mc-tab-body"></div>
   </aside>
-  <footer class="mc-status"></footer>
 </div>`
 
 interface Tile {
@@ -846,8 +846,8 @@ function mount(root: HTMLElement, vctx: VizContext) {
     }
   }
 
-  // ─── Chrome: title badge, activity bar, status bar ────────────────────
-  const statusBar = q('.mc-status')
+  // ─── Chrome: title badge, activity bar, connection ────────────────────
+  const conn = q('.mc-conn')
   function renderChrome(world: WorldState, now: number): void {
     const open = attention.open()
     const urgent = open.filter((a) => a.severity === 'high').length
@@ -865,19 +865,10 @@ function mount(root: HTMLElement, vctx: VizContext) {
     bell.title = on ? 'Desktop notifications on (click to turn off)' : 'Desktop notifications off (click to turn on)'
     bell.setAttribute('aria-label', bell.title)
 
-    const live = Object.values(world.sessions).filter(isLive).length
-    const working = Object.values(world.sessions).reduce((n, s) => n + Object.values(s.agents).filter((a) => a.status === 'working').length, 0)
-    statusBar.classList.toggle('offline', client.status !== 'live')
-    const tokMin = tokenTimes.filter((t) => t.ts > now - 60_000).reduce((n, t) => n + t.n, 0)
-    render(statusBar, `${client.status}|${live}|${working}|${Object.keys(world.sessions).length}|${formatCount(tokMin)}|${theme}|${on}|${settings.get('notify.sound')}`, () => [
-      h('span', null, client.status === 'live' ? '● live' : `○ ${client.status}`),
-      h('span', null, `${live} live / ${Object.keys(world.sessions).length} sessions`),
-      h('span', null, `${working} agents working`),
-      h('span.grow'),
-      h('span', null, `${formatCount(tokMin)} tok/min`),
-      h('button', { onclick: () => vctx.openSettings('notifications'), title: 'Notification settings' }, `${on ? '🔔' : '🔕'}${settings.get('notify.sound') ? ' ♪' : ''}`),
-      h('button', { onclick: () => vctx.openSettings('mission'), title: 'Mission Control settings' }, THEME_LABEL[theme]),
-    ])
+    // Only shown when something is wrong: a live connection needs no label.
+    conn.hidden = client.status === 'live'
+    const connText = client.status === 'reconnecting' ? 'Reconnecting…' : client.status === 'connecting' ? 'Connecting…' : 'Disconnected'
+    if (conn.textContent !== connText) conn.textContent = connText
   }
 
   // ─── Loop ─────────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 /**
- * VS Code extension: the observe-agents-do-things dashboard in an editor tab,
- * plus a status bar item that says when an agent needs you.
+ * VS Code extension: the observe-agents-do-things dashboard in the side bar,
+ * the panel or an editor tab, plus a status bar item that says when an agent
+ * needs you.
  *
  * It uses an observer that is already running at `observeAgents.serverUrl`
  * (the CLI, the Docker container or another VS Code window) and only starts
@@ -27,6 +28,8 @@ interface Backend {
 let backend: Backend | undefined
 let starting: Promise<Backend> | undefined
 let panel: vscode.WebviewPanel | undefined
+/** Every webview showing the dashboard (editor tab, side bar, panel), so a restart can point them at the new observer. */
+const views = new Set<vscode.Webview>()
 let statusItem: vscode.StatusBarItem
 let context: vscode.ExtensionContext
 const notified = new Set<string>()
@@ -38,6 +41,10 @@ export function activate(ctx: vscode.ExtensionContext): void {
   ctx.subscriptions.push(
     statusItem,
     vscode.commands.registerCommand('observeAgents.open', openDashboard),
+    vscode.commands.registerCommand('observeAgents.showSidebar', () => vscode.commands.executeCommand('observeAgents.sidebar.focus')),
+    vscode.commands.registerCommand('observeAgents.showPanel', () => vscode.commands.executeCommand('observeAgents.panel.focus')),
+    vscode.window.registerWebviewViewProvider('observeAgents.sidebar', { resolveWebviewView: showInView }, { webviewOptions: { retainContextWhenHidden: true } }),
+    vscode.window.registerWebviewViewProvider('observeAgents.panel', { resolveWebviewView: showInView }, { webviewOptions: { retainContextWhenHidden: true } }),
     vscode.commands.registerCommand('observeAgents.openInBrowser', async () => {
       const b = await ensureBackend()
       await vscode.env.openExternal(await externalUri(b))
@@ -137,7 +144,8 @@ async function restart(): Promise<void> {
   notified.clear()
   try {
     await ensureBackend()
-    if (panel) panel.webview.html = await dashboardHtml(backend!)
+    const html = await dashboardHtml(backend!)
+    for (const view of views) view.html = html
   } catch {
     render()
   }
@@ -164,8 +172,22 @@ async function openDashboard(): Promise<void> {
     retainContextWhenHidden: true,
   })
   panel.iconPath = vscode.Uri.joinPath(context.extensionUri, 'icon.png')
-  panel.onDidDispose(() => { panel = undefined })
-  panel.webview.html = await dashboardHtml(b)
+  const webview = panel.webview
+  views.add(webview)
+  panel.onDidDispose(() => { panel = undefined; views.delete(webview) })
+  webview.html = await dashboardHtml(b)
+}
+
+/** The same dashboard in the side bar or the panel. */
+async function showInView(view: vscode.WebviewView): Promise<void> {
+  view.webview.options = { enableScripts: true }
+  views.add(view.webview)
+  view.onDidDispose(() => views.delete(view.webview))
+  try {
+    view.webview.html = await dashboardHtml(await ensureBackend())
+  } catch (err) {
+    view.webview.html = `<p style="padding: 8px 12px">${escapeHtml((err as Error).message)}</p>`
+  }
 }
 
 /** The webview only frames the observer's own page, so the dashboard is the same one the browser shows. */
@@ -241,6 +263,10 @@ function notify(urgent: AttentionItem[], world: WorldState): void {
       if (pick) void openDashboard()
     })
   }
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!)
 }
 
 function escape(text: string): string {

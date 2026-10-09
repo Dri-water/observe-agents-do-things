@@ -7,7 +7,7 @@
 import './host.css'
 import { connect } from '@oadt/client'
 import { AttentionService } from './host/attention'
-import { NOTIFICATION_SETTINGS, resolveTheme, Settings, type SettingDef, type ThemeName } from './host/settings'
+import { DISPLAY_SETTINGS, NOTIFICATION_SETTINGS, resolveTheme, ZOOM_LEVELS, Settings, type SettingDef, type ThemeName } from './host/settings'
 import { SettingsPanel } from './host/settings-panel'
 import { VISUALIZATIONS } from './viz'
 import type { VizInstance, Visualization } from './viz/types'
@@ -32,7 +32,18 @@ const root = document.getElementById('viz-root')!
 
 const settings = new Settings()
 const VIZ_SETTING: SettingDef = { key: 'viz', label: 'Visualization', type: 'select', default: VISUALIZATIONS[0]!.id }
-settings.define([VIZ_SETTING, ...NOTIFICATION_SETTINGS])
+settings.define([VIZ_SETTING, ...DISPLAY_SETTINGS, ...NOTIFICATION_SETTINGS])
+
+// Zoom scales the whole page (every visualization and the settings dialog) in one place.
+const zoom = () => Number(settings.get<string>('ui.zoom')) || 100
+const applyZoom = () => { document.documentElement.style.zoom = String(zoom() / 100) }
+applyZoom()
+settings.on('ui.zoom', applyZoom)
+function stepZoom(dir: 1 | -1 | 0): void {
+  const now = zoom()
+  const next = dir === 0 ? 100 : dir > 0 ? ZOOM_LEVELS.find((z) => z > now) ?? now : [...ZOOM_LEVELS].reverse().find((z) => z < now) ?? now
+  settings.set('ui.zoom', String(next))
+}
 for (const v of VISUALIZATIONS) settings.define((v.settings ?? []).map((d) => ({ ...d, key: `${v.id}.${d.key}` })))
 
 // The host's own UI follows whatever the active visualization asks for.
@@ -98,6 +109,12 @@ function show(id: string): void {
 settings.on('viz', (id) => show(String(id)))
 
 window.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && ['=', '+', '-', '_', '0'].includes(e.key)) {
+    e.preventDefault()
+    e.stopImmediatePropagation()
+    stepZoom(e.key === '0' ? 0 : e.key === '-' || e.key === '_' ? -1 : 1)
+    return
+  }
   if ((e.ctrlKey || e.metaKey) && e.key === ',') {
     e.preventDefault()
     panel.toggle()
