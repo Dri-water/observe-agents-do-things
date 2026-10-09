@@ -330,19 +330,20 @@ function mount(root: HTMLElement, vctx: VizContext) {
     const activityList = h('div.mc-rows')
     const activityEmpty = h('div.mc-empty', null, 'No tool calls yet.')
 
-    main.replaceChildren(
+    // One wrapper so the layout can rearrange these sections for the space it gets (see mission.css).
+    main.replaceChildren(h('div.mc-overview', null,
       h('section.mc-kpis', null,
         kpiCells.live, kpiCell('agents working', kpi.working), kpiCells.needs,
         kpiCell('tools / min', kpi.perMin), kpiCell('tokens / min', kpi.tokMin), kpiCells.errors,
         h('div.mc-throughput', null, throughputLabel, throughput),
       ),
       attnWrap,
-      h('section.mc-section', null, h('div.mc-section-head', null, 'Sessions', h('span.grow'), ...scopeBtns), grid),
+      h('section.mc-section.mc-sessions', null, h('div.mc-section-head', null, 'Sessions', h('span.grow'), ...scopeBtns), grid),
       h('section.mc-split', null,
-        h('div.mc-pane', null, h('div.mc-section-head', null, 'Live diffs', h('span.grow'), h('span.faint', null, 'click a card to expand')), h('div.mc-pane-body', null, diffEmpty, diffList)),
-        h('div.mc-pane', null, h('div.mc-section-head', null, 'Activity', h('span.grow'), h('button', { onclick: () => setView('log') }, 'Open log')), h('div.mc-pane-body', null, activityEmpty, activityList)),
+        h('div.mc-pane.mc-diffs-pane', null, h('div.mc-section-head', null, 'Live diffs', h('span.grow'), h('span.faint', null, 'click a card to expand')), h('div.mc-pane-body', null, diffEmpty, diffList)),
+        h('div.mc-pane.mc-activity-pane', null, h('div.mc-section-head', null, 'Activity', h('span.grow'), h('button', { onclick: () => setView('log') }, 'Open log')), h('div.mc-pane-body', null, activityEmpty, activityList)),
       ),
-    )
+    ))
 
     const attn = new KeyedList<AttentionItem>(attnList, {
       key: (i) => i.id,

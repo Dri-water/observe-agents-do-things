@@ -362,3 +362,45 @@
   .mc-pane + .mc-pane { border-left: 0; border-top: 1px solid var(--border); }
   .mc-search { display: none; }
 }
+
+/* ─── Overview wrapper: a plain column by default ──────────────────── */
+.mc-overview { display: flex; flex-direction: column; flex: 1 0 auto; min-width: 0; }
+
+/* Short and wide (a bottom panel, a laptop split): the same parts side by side, each scrolling on its own. */
+@media (min-width: 801px) and (max-height: 620px) {
+  .mc-main:has(> .mc-overview) { overflow: hidden; }
+  .mc-overview {
+    flex: 1 1 auto; min-height: 0; display: grid;
+    grid-template-columns: minmax(250px, 300px) minmax(280px, 1.1fr) minmax(0, 1.5fr) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "kpis sessions diffs activity" "attn sessions diffs activity";
+  }
+  .mc-overview > .mc-kpis { grid-area: kpis; grid-template-columns: repeat(3, minmax(0, 1fr)); border-right: 1px solid var(--border); }
+  .mc-overview .mc-kpi { padding: 4px 8px; border-bottom: 1px solid var(--border); }
+  .mc-overview .mc-kpi .v { font-size: 15px; }
+  .mc-overview .mc-kpi .k { font-size: 9.5px; }
+  .mc-overview .mc-throughput { grid-column: 1 / -1; height: 52px; }
+  .mc-overview > .mc-attn-wrap { grid-area: attn; min-height: 0; overflow-y: auto; border-right: 1px solid var(--border); border-bottom: 0; }
+  .mc-overview > .mc-attn-wrap .mc-attn-list { max-height: none; overflow: visible; }
+  .mc-overview > .mc-sessions { grid-area: sessions; display: flex; flex-direction: column; min-height: 0; border-bottom: 0; }
+  .mc-overview > .mc-sessions .mc-grid { flex: 1; min-height: 0; overflow-y: auto; grid-template-columns: 1fr; align-content: start; }
+  .mc-overview > .mc-split { display: contents; }
+  .mc-overview .mc-diffs-pane { grid-area: diffs; border-left: 1px solid var(--border); }
+  .mc-overview .mc-activity-pane { grid-area: activity; }
+  .mc-overview .mc-row { grid-template-columns: 58px 54px minmax(0, 1fr) 54px; }
+  .mc-overview .mc-row .who { display: none; }
+  .mc-overview .mc-throughput .lbl { max-width: calc(100% - 120px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mc-overview .mc-attn .det { display: none; }
+}
+/* Not wide enough for four columns: drop the activity feed (the full log is one click away in the left bar). */
+@media (min-width: 801px) and (max-width: 1099px) and (max-height: 620px) {
+  .mc-overview {
+    grid-template-columns: minmax(230px, 270px) minmax(260px, 1fr) minmax(0, 1.3fr);
+    grid-template-areas: "kpis sessions diffs" "attn sessions diffs";
+  }
+  .mc-overview .mc-activity-pane { display: none; }
+}
+/* Very short: the throughput chart goes first. */
+@media (min-width: 801px) and (max-height: 330px) {
+  .mc-overview .mc-throughput { display: none; }
+}
