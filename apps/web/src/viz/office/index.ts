@@ -29,7 +29,8 @@ import { Disposer, type Visualization, type VizContext } from '../types'
 import { clamp } from '../../shared/dom'
 import { iso } from './iso'
 import { activityOf, Office, ROOM_D, ROOM_W } from './model'
-import { attachEffects, daylight, getTimeMode, renderOffice, seatZ, setTimeMode, type Camera, type TimeMode } from './render'
+import { attachEffects, daylight, getTimeMode, renderOffice, seatZ, setOfficeTheme, setTimeMode, type Camera, type TimeMode } from './render'
+import { resolveTheme, THEME_SETTING } from '../../host/settings'
 
 export const office: Visualization = {
   id: 'office',
@@ -37,6 +38,7 @@ export const office: Visualization = {
   description: 'A cosy isometric office: each session is a room, each agent a little blob at a desk.',
   icon: '⌂',
   settings: [
+    { ...THEME_SETTING, description: 'Colours of the controls, the front desk and the space around the rooms. Day and night lighting is separate.' },
     { key: 'labels', label: 'Name tags', type: 'toggle', default: true, description: 'Show name tags under the blobs. Shortcut: L.' },
     { key: 'sidebar', label: 'Front desk sidebar', type: 'toggle', default: true, description: 'Attention queue, filed diffs and intercom in a sidebar next to the office. Shortcut: D.' },
     {
@@ -58,9 +60,6 @@ const TEMPLATE = `
       <div class="of-brand"><span class="of-logo"><i></i><i></i><i></i></span><b>Agent Office</b><span class="of-clock"></span></div>
       <div class="of-stats"></div>
       <div class="of-actions">
-        <button class="of-btn of-bell" title="Desktop notifications"></button>
-        <button class="of-btn of-labels" title="Name tags (L)">name tags</button>
-        <button class="of-btn of-sidebar" title="Front desk sidebar (D)">front desk</button>
         <button class="of-btn of-fit" title="Fit view (F)">⤢ fit</button>
       </div>
     </header>
@@ -105,15 +104,11 @@ function mount(root: HTMLElement, vctx: VizContext) {
   d.add(settings.on('office.labels', (v) => { ui.labels = v === true }))
   const of = q('.of')
   const stage = q('.of-stage')
-  const sidebarBtn = q('.of-sidebar')
   function applySidebar(): void {
-    const on = settings.get<boolean>('office.sidebar')
-    of.classList.toggle('no-desk', !on)
-    sidebarBtn.classList.toggle('on', on)
+    of.classList.toggle('no-desk', !settings.get<boolean>('office.sidebar'))
   }
   applySidebar()
   d.add(settings.on('office.sidebar', applySidebar))
-  d.listen(sidebarBtn, 'click', () => settings.set('office.sidebar', !settings.get<boolean>('office.sidebar')))
 
   let pending: ObserverEvent[] = []
   let dirty = true
@@ -227,9 +222,7 @@ function mount(root: HTMLElement, vctx: VizContext) {
   }, { passive: false })
   d.listen(canvas, 'pointerleave', () => { ui.hovered = undefined })
 
-  const labelsBtn = q('.of-labels')
   const toggleLabels = () => settings.set('office.labels', !ui.labels)
-  d.listen(labelsBtn, 'click', toggleLabels)
   const timeParam = new URLSearchParams(location.search).get('time') as TimeMode | null
   setTimeMode(timeParam ?? settings.get<TimeMode>('office.lighting'))
   d.add(settings.on('office.lighting', (v) => { setTimeMode(v as TimeMode); renderTop(Date.now()) }))
@@ -243,13 +236,6 @@ function mount(root: HTMLElement, vctx: VizContext) {
   d.add(() => setTimeMode('auto'))
   d.listen(q('.of-fit'), 'click', () => { ui.autoFit = true })
 
-  // Desktop notifications, same toggle as Mission Control's bell.
-  const bell = q('.of-bell')
-  d.listen(bell, 'click', async () => {
-    if (settings.get<boolean>('notify.desktop')) return settings.set('notify.desktop', false)
-    if ((await attention.requestPermission()) === 'granted') settings.set('notify.desktop', true)
-    else vctx.openSettings('notifications')
-  })
   d.listen(q('.of-clear'), 'click', () => attention.ackAll())
 
   /** The rooms you can cycle through with J/K: all live, then each recent session. */
@@ -312,7 +298,19 @@ function mount(root: HTMLElement, vctx: VizContext) {
     )
   }
 
-  let chrome: 'light' | 'dark' | undefined
+  // ─── Theme ────────────────────────────────────────────────────────────
+  // The app theme colours the HUD and the backdrop; lighting stays its own setting.
+  const dark = matchMedia('(prefers-color-scheme: dark)')
+  function applyTheme(): void {
+    const theme = resolveTheme(settings.get<string>('office.theme'))
+    of.dataset.theme = theme
+    setOfficeTheme(theme)
+    vctx.setChromeTheme(theme)
+  }
+  applyTheme()
+  d.add(settings.on('office.theme', applyTheme))
+  d.listen(dark, 'change', applyTheme)
+
   const stats = { working: h('b'), needs: h('b'), perMin: h('b'), tokens: h('b') }
   q('.of-stats').append(
     h('span.of-sticky.yellow', null, stats.working, 'at work'),
@@ -329,8 +327,6 @@ function mount(root: HTMLElement, vctx: VizContext) {
     const day = daylight()
     const t = new Date()
     q('.of-clock').textContent = `${day > 0.5 ? '☀' : '☾'} ${t.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}${getTimeMode() === 'auto' ? '' : ` · ${getTimeMode()}`}`
-    const theme = day > 0.5 ? 'light' : 'dark'
-    if (theme !== chrome) { chrome = theme; vctx.setChromeTheme(theme); root.firstElementChild?.classList.toggle('night', theme === 'dark') }
     let working = 0, tokens = 0
     for (const id of model.rooms.keys()) {
       const s = world.sessions[id]
@@ -346,10 +342,6 @@ function mount(root: HTMLElement, vctx: VizContext) {
     needsSticky.hidden = !needs
     tickTo(stats.perMin, perMin)
     tickTo(stats.tokens, tokens, formatCount)
-    const on = settings.get<boolean>('notify.desktop')
-    bell.textContent = on ? '🔔' : '🔕'
-    bell.classList.toggle('on', on)
-    bell.title = on ? 'Desktop notifications on (click to turn off)' : 'Desktop notifications off (click to turn on)'
     q('.of-empty').hidden = Object.keys(world.sessions).length > 0
   }
 
@@ -542,7 +534,6 @@ function mount(root: HTMLElement, vctx: VizContext) {
     const tx = dr ? dr.left - cr.left + 30 : w + 40, ty = dr ? clamp(dr.top - cr.top + 24, 60, hh - 40) : hh / 2
     const fileTarget = { x: (tx - w / 2) / cam.zoom + cam.x, y: (ty - hh / 2) / cam.zoom + cam.y }
     renderOffice(ctx, model, world, cam, w, hh, dpr, now, { hovered: ui.hovered, selected: ui.selected?.char, labels: ui.labels, fileTarget })
-    labelsBtn.classList.toggle('on', ui.labels)
 
     if (t - lastHud > 400) {
       lastHud = t

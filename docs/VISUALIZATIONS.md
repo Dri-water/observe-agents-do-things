@@ -39,7 +39,7 @@ Built for daily use on a second monitor:
 - **Live overview.** KPIs (live sessions, working agents, tools/min, tokens/min, recent errors), a smoothly scrolling throughput chart by tool kind, and compact session tiles. Each tile shows what the session is doing right now with a ticking timer, a heartbeat line that spikes on every tool call, and a context gauge.
 - **Live diffs.** Edits stream in as coloured diffs the moment an agent makes them (Claude Code's Edit, MultiEdit and Write, Codex's apply_patch) and replay as if typed: removed lines are struck in, then the new code types itself out behind a caret. A running feed of every tool call sits beside them. Expand a diff for the full change.
 - **Session drawer.** Open a session (click a tile, or `Enter`) to slide in its Activity (every tool call with input and output), Diffs, Chat, Agents (the tree and what each is waiting on) and Files. Pin it in Settings to keep it docked instead.
-- **Themes.** Dark Modern, Light Modern, Gruvbox Dark and Gruvbox Light, or follow the system.
+- **Themes.** Dark Modern, Light Modern, Gruvbox Dark and Gruvbox Light, or follow the system, in Settings › Visualizations › Mission Control.
 
 Keys: `/` filter, `J`/`K` move between sessions, `Enter` open, `Esc` close, `1`–`5` drawer tabs, `X` acknowledge all.
 
@@ -89,15 +89,20 @@ cost and context fill. Drag to pan and scroll to zoom. `F` fits the view, `L`
 toggles name tags, `D` toggles the front desk sidebar, `A` follows all live
 rooms, `J`/`K` step through rooms and `X` acknowledges everything.
 
-The **front desk** sidebar (toggle with `D` or the top-bar button; it never
+The **front desk** sidebar (toggle with `D` or in Settings; it never
 covers the office) shares Mission Control's attention queue: approvals,
 finished turns, failure streaks, nearly full context and long-running tools,
 each with a ✓ to acknowledge. Click an item to jump to that room and agent.
 Under it, **Filed diffs** holds the latest changes from the rooms on screen,
 same cards as Mission Control's live diff feed (click one to expand); a
-change only appears there once its bubble has been filed. The bell in the
-top bar toggles desktop notifications, and the "need you" sticky counts open
-items.
+change only appears there once its bubble has been filed. The "need you"
+sticky counts open items.
+
+The office has the same themes as Mission Control (Dark, Light, Gruvbox Dark,
+Gruvbox Light or follow the system). A theme colours the controls, the front
+desk and the space around the rooms; day and night lighting is separate and
+still changes the rooms themselves. Theme, name tags, the front desk and
+lighting are all in Settings › Visualizations › Agent Office.
 
 ![Agent Office at night](images/office-night.png)
 

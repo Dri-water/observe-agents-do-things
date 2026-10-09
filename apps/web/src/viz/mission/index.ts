@@ -61,7 +61,6 @@ export const mission: Visualization = {
 type View = 'overview' | 'attention' | 'log'
 type Tab = 'activity' | 'diffs' | 'chat' | 'agents' | 'files'
 
-const THEME_LABEL: Record<ThemeName, string> = { dark: 'Dark', light: 'Light', 'gruvbox-dark': 'Gruvbox Dark', 'gruvbox-light': 'Gruvbox Light' }
 const CATEGORIES = Object.keys(CATEGORY) as ToolCategory[]
 const ATTN_ICON: Record<AttentionItem['kind'], string> = { waiting: '⏸', errors: '✕', finished: '✓', aborted: '■', context: '◔', 'long-tool': '⧗' }
 const SPAN_MAX = 15 * 60_000
@@ -77,10 +76,6 @@ const TEMPLATE = `
     <button class="mc-attn-badge"></button>
     <span class="mc-conn" role="status" hidden></span>
     <div class="mc-search"><input type="search" placeholder="Filter sessions (/)" spellcheck="false" aria-label="Filter sessions" /></div>
-    <div class="mc-title-actions">
-      <button class="mc-iconbtn mc-bell"></button>
-      <select class="mc-theme" title="Theme" aria-label="Theme"></select>
-    </div>
   </header>
   <nav class="mc-act" aria-label="Views">
     <button data-view="overview" title="Overview">▦</button>
@@ -144,7 +139,6 @@ function mount(root: HTMLElement, vctx: VizContext) {
   // ─── Theme ────────────────────────────────────────────────────────────
   let colors: Record<string, string> = {}
   let theme: ThemeName = 'dark'
-  const themeSelect = q<HTMLSelectElement>('.mc-theme')
   function refreshTheme(): void {
     theme = resolveTheme(settings.get<string>('mission.theme'))
     mc.dataset.theme = theme
@@ -153,15 +147,8 @@ function mount(root: HTMLElement, vctx: VizContext) {
     const get = (n: string) => cs.getPropertyValue(n).trim()
     colors = { grid: get('--border'), text: get('--fg-faint'), accent: get('--accent'), ok: get('--ok'), warn: get('--warn'), err: get('--err'), claude: get('--claude'), codex: get('--codex'), faint: get('--fg-faint') }
     for (const c of CATEGORIES) colors[c] = get(`--c-${c}`)
-    const value = settings.get<string>('mission.theme')
-    themeSelect.replaceChildren(...[['system', 'System'], ...Object.entries(THEME_LABEL)].map(([v, l]) => {
-      const o = h('option', { value: v }, l!) as HTMLOptionElement
-      o.selected = v === value
-      return o
-    }))
     dirty = true
   }
-  themeSelect.addEventListener('change', () => settings.set('mission.theme', themeSelect.value))
   refreshTheme()
   d.add(settings.on('mission.theme', refreshTheme))
   d.listen(matchMedia('(prefers-color-scheme: light)'), 'change', refreshTheme)
@@ -253,12 +240,6 @@ function mount(root: HTMLElement, vctx: VizContext) {
   search.addEventListener('input', () => { ui.search = search.value; dirty = true })
   q('.mc-attn-badge').addEventListener('click', () => setView('attention'))
 
-  const bell = q('.mc-bell')
-  bell.addEventListener('click', async () => {
-    if (settings.get<boolean>('notify.desktop')) return settings.set('notify.desktop', false)
-    if ((await attention.requestPermission()) === 'granted') settings.set('notify.desktop', true)
-    else vctx.openSettings('notifications')
-  })
   d.add(settings.on('*', () => { dirty = true }))
 
   d.listen(window, 'keydown', (e: KeyboardEvent) => {
@@ -859,11 +840,6 @@ function mount(root: HTMLElement, vctx: VizContext) {
     const count = q('.mc-act .count')
     count.hidden = !needs
     count.textContent = String(needs)
-    const on = settings.get<boolean>('notify.desktop')
-    bell.textContent = on ? '🔔' : '🔕'
-    bell.classList.toggle('on', on)
-    bell.title = on ? 'Desktop notifications on (click to turn off)' : 'Desktop notifications off (click to turn on)'
-    bell.setAttribute('aria-label', bell.title)
 
     // Only shown when something is wrong: a live connection needs no label.
     conn.hidden = client.status === 'live'

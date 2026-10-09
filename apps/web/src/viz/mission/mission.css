@@ -87,11 +87,9 @@
 .mc-search input:focus { text-align: left; }
 .mc-conn { color: var(--err); font-size: 12px; white-space: nowrap; }
 .mc-conn::before { content: "○ "; }
-.mc-title-actions { display: flex; align-items: center; gap: 4px; }
 .mc-iconbtn { height: 24px; min-width: 24px; padding: 0 6px !important; border-radius: 4px; color: var(--fg-dim); display: inline-flex; align-items: center; justify-content: center; gap: 4px; font-size: 12px; }
 .mc-iconbtn:hover { background: var(--hover); color: var(--fg); }
 .mc-iconbtn.on { color: var(--accent); }
-.mc-theme { height: 22px; padding: 0 4px; font-size: 12px; }
 /* The host's settings button sits at the bottom of the activity bar, VS Code style. */
 .mc-act .oadt-controls { margin-top: auto; }
 .mc-act .oadt-settings-button { width: 42px; height: 42px; padding: 0; justify-content: center; border: 0; border-radius: 0; background: none; color: var(--fg-faint); font-size: 18px; }

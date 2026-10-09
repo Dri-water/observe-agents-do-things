@@ -120,16 +120,31 @@ export function renderOffice(
 
 // ─── Backdrop ────────────────────────────────────────────────────────────
 
+/** The space around the rooms for each app theme: gradient stops by day and by night. Lighting still changes the rooms themselves. */
+interface Backdrop { day: [string, string, string]; night: [string, string, string]; dark: boolean }
+const BACKDROPS: Record<OfficeTheme, Backdrop> = {
+  light: { day: ['#dfe8f4', '#eceaf2', '#f7eef0'], night: ['#171a3d', '#232150', '#2e2653'], dark: false },
+  dark: { day: ['#1c2130', '#1f2129', '#232029'], night: ['#11132a', '#161530', '#1b1733'], dark: true },
+  'gruvbox-dark': { day: ['#32302f', '#2c2a29', '#282828'], night: ['#1d2021', '#201e20', '#252123'], dark: true },
+  'gruvbox-light': { day: ['#f2e5bc', '#f6ebc6', '#fbf1c7'], night: ['#3c3836', '#32302f', '#282828'], dark: false },
+}
+export type OfficeTheme = 'light' | 'dark' | 'gruvbox-dark' | 'gruvbox-light'
+let backdrop = BACKDROPS.light
+export function setOfficeTheme(theme: OfficeTheme): void {
+  backdrop = BACKDROPS[theme] ?? BACKDROPS.light
+}
+
 function drawBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, now: number, day: number): void {
   const bg = ctx.createLinearGradient(0, 0, 0, h)
-  bg.addColorStop(0, mix('#171a3d', '#dfe8f4', day))
-  bg.addColorStop(0.6, mix('#232150', '#eceaf2', day))
-  bg.addColorStop(1, mix('#2e2653', '#f7eef0', day))
+  bg.addColorStop(0, mix(backdrop.night[0], backdrop.day[0], day))
+  bg.addColorStop(0.6, mix(backdrop.night[1], backdrop.day[1], day))
+  bg.addColorStop(1, mix(backdrop.night[2], backdrop.day[2], day))
   ctx.fillStyle = bg
   ctx.fillRect(0, 0, w, h)
-  // A soft key light behind the rooms.
+  // A soft key light behind the rooms; much fainter on a dark backdrop, where white would wash it out.
+  const key = backdrop.dark ? 0.07 : 0.45
   const g = ctx.createRadialGradient(w * 0.42, h * 0.3, 0, w * 0.42, h * 0.3, Math.max(w, h) * 0.6)
-  g.addColorStop(0, day > 0.5 ? `rgba(255,255,255,${0.45 * day})` : `rgba(120,110,210,${0.22 * (1 - day)})`)
+  g.addColorStop(0, day > 0.5 ? `rgba(255,255,255,${key * day})` : `rgba(120,110,210,${0.22 * (1 - day)})`)
   g.addColorStop(1, 'rgba(255,255,255,0)')
   ctx.fillStyle = g
   ctx.fillRect(0, 0, w, h)
@@ -152,7 +167,7 @@ function drawBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, now: 
     for (let i = 0; i < 14; i++) {
       const x = (rnd(i, 11) * w + now / (90 + rnd(i, 12) * 160)) % (w + 80) - 40
       const y = rnd(i, 13) * h
-      ctx.globalAlpha = day * (0.05 + rnd(i, 14) * 0.07)
+      ctx.globalAlpha = day * (0.05 + rnd(i, 14) * 0.07) * (backdrop.dark ? 0.35 : 1)
       ctx.fillStyle = '#ffffff'
       ctx.beginPath(); ctx.arc(x, y, 6 + rnd(i, 15) * 22, 0, Math.PI * 2); ctx.fill()
     }
