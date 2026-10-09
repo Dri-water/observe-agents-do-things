@@ -65,7 +65,7 @@ npm run demo
 
 ### VS Code
 
-The **Observe Agents** extension puts the dashboard in an editor tab and adds a status bar item that says when an agent needs you. It uses an observer already running on  (the CLI, Docker or another window) or starts one itself. To build it from source:
+The **Observe Agents** extension puts the dashboard in an editor tab and adds a status bar item that says when an agent needs you. It uses an observer already running on `127.0.0.1:4545` (the CLI, Docker or another window) or starts one itself. To build it from source:
 
 ```bash
 npm run build:vscode   # → apps/vscode/observe-agents-do-things-0.1.0.vsix
