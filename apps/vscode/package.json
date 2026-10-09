@@ -1,0 +1,98 @@
+{
+  "name": "observe-agents-do-things",
+  "displayName": "Observe Agents: live view of Claude Code and Codex",
+  "description": "Watch your Claude Code and Codex agents work in real time, right in VS Code. Read-only: no hooks, no wrappers, no API keys.",
+  "version": "0.1.0",
+  "publisher": "dri-water",
+  "license": "MIT",
+  "private": true,
+  "icon": "icon.png",
+  "galleryBanner": {
+    "color": "#0d1117",
+    "theme": "dark"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Dri-water/observe-agents-do-things.git"
+  },
+  "homepage": "https://github.com/Dri-water/observe-agents-do-things#readme",
+  "bugs": "https://github.com/Dri-water/observe-agents-do-things/issues",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization",
+    "Other"
+  ],
+  "keywords": [
+    "claude",
+    "claude code",
+    "codex",
+    "ai agents",
+    "coding agents",
+    "dashboard",
+    "observability"
+  ],
+  "extensionKind": [
+    "ui",
+    "workspace"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "observeAgents.open",
+        "title": "Open Dashboard",
+        "category": "Observe Agents",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "observeAgents.openInBrowser",
+        "title": "Open Dashboard in Browser",
+        "category": "Observe Agents"
+      }
+    ],
+    "configuration": {
+      "title": "Observe Agents",
+      "properties": {
+        "observeAgents.serverUrl": {
+          "type": "string",
+          "default": "http://127.0.0.1:4545",
+          "markdownDescription": "Where the observer runs. If one is already running there (the `oadt` CLI, the Docker container or another VS Code window), the extension uses it; otherwise it starts one inside VS Code on this address."
+        },
+        "observeAgents.token": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Bearer token, only needed for an observer that runs with `--token` on another machine."
+        },
+        "observeAgents.statusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show what needs you and how many agents are working in the status bar."
+        },
+        "observeAgents.notifications": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show a VS Code notification when an agent is waiting for approval or keeps failing."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit -p .",
+    "package": "node build.mjs && npx --yes @vscode/vsce package --no-dependencies",
+    "test": "node build.mjs && node test/run.js"
+  },
+  "devDependencies": {
+    "@oadt/client": "0.1.0",
+    "@oadt/core": "0.1.0",
+    "@oadt/protocol": "0.1.0",
+    "@oadt/server": "0.1.0",
+    "@types/vscode": "1.90.0",
+    "@vscode/test-electron": "^3.1.0"
+  }
+}

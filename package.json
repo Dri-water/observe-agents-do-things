@@ -12,7 +12,8 @@
     "packages/react",
     "packages/server",
     "apps/web",
-    "examples/react-dashboard"
+    "examples/react-dashboard",
+    "apps/vscode"
   ],
   "scripts": {
     "build": "npm run build:packages && npm run build:web",
@@ -22,10 +23,11 @@
     "demo": "node packages/server/dist/cli.js --demo --open",
     "dev": "node scripts/dev.mjs",
     "test": "npm run build:packages && node scripts/test.mjs",
-    "typecheck": "tsc -b packages/protocol packages/core packages/client packages/react packages/server && npm run typecheck --workspace apps/web && npm run typecheck --workspace examples/react-dashboard",
+    "typecheck": "tsc -b packages/protocol packages/core packages/client packages/react packages/server && npm run typecheck --workspace apps/web && npm run typecheck --workspace examples/react-dashboard && npm run typecheck --workspace apps/vscode",
     "clean": "node scripts/clean.mjs",
     "build:examples": "npm run build --workspace examples/react-dashboard",
-    "build:cli": "npm run build && node scripts/build-cli.mjs"
+    "build:cli": "npm run build && node scripts/build-cli.mjs",
+    "build:vscode": "npm run build && npm run package --workspace apps/vscode"
   },
   "engines": {
     "node": ">=20.11"

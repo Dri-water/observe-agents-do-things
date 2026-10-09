@@ -1,0 +1,5 @@
+dist/
+ui/
+*.vsix
+LICENSE
+.vscode-test/
