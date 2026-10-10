@@ -154,6 +154,16 @@
 .of-who { font-weight: 800; flex: none; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .of-flash { animation: of-flash 1.4s ease-out; }
 @keyframes of-flash { from { background-color: var(--of-hi); } }
+.of-room-badge { min-width: 17px; height: 17px; padding: 0 5px; border-radius: 9px; display: inline-grid; place-items: center; font-size: 10.5px; font-weight: 800; background: #ffb547; color: #3d2500; }
+.of-room-badge.urgent { background: #ff5d73; color: #fff; }
+.of-sticky.orange { cursor: pointer; }
+.of-sticky.orange.open { animation: none; transform: rotate(0) translateY(1px); }
+.of-needs-pop {
+  position: absolute; top: 58px; left: 50%; transform: translateX(-50%); z-index: 6; width: min(360px, calc(100% - 24px)); max-height: min(60%, 420px); overflow: auto;
+  padding: 8px; border-radius: 16px; background: var(--of-card); box-shadow: var(--of-shadow-card); animation: of-pop .16s ease-out;
+}
+.of-needs-head { display: flex; align-items: center; gap: 6px; padding: 2px 4px 8px; font-size: 12px; }
+.of-needs-rows { display: flex; flex-direction: column; gap: 4px; }
 .of-room.urgent { box-shadow: var(--of-shadow), 0 0 0 2px #ff5d7366; }
 
 .of-card {
@@ -211,3 +221,4 @@
   .of-stats { display: none; }
   .of-brand b { display: none; }
 }
+@keyframes of-pop { from { opacity: 0; } }

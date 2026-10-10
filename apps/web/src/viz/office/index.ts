@@ -65,6 +65,7 @@ const TEMPLATE = `
       </div>
     </header>
     <nav class="of-rooms"></nav>
+    <div class="of-needs-pop" role="dialog" aria-label="Who needs you" hidden></div>
     <div class="of-card" hidden></div>
     <div class="of-empty" hidden>
       <div class="of-empty-art">☕</div>
@@ -289,13 +290,17 @@ function mount(root: HTMLElement, vctx: VizContext) {
   function renderRooms(): void {
     if (pressingRooms) return
     const world = client.world
-    const urgent = new Set(attention.open().filter((a) => a.severity === 'high').map((a) => a.sessionId))
+    const open = attention.open().filter((a) => a.severity !== 'low')
+    const urgent = new Set(open.filter((a) => a.severity === 'high').map((a) => a.sessionId))
+    const counts = new Map<string, number>()
+    for (const a of open) counts.set(a.sessionId, (counts.get(a.sessionId) ?? 0) + 1)
     const list = recentSessions(world).slice(0, 10)
     roomsEl.replaceChildren(
       h('button.of-room' + (ui.view === 'auto' ? '.on' : ''), { onclick: () => setView('auto') }, h('span.of-room-dot.live'), 'All rooms'),
       ...list.map((s) => h('button.of-room' + (ui.view === s.id ? '.on' : '') + (urgent.has(s.id) ? '.urgent' : ''), { onclick: () => setView(s.id), title: s.meta.cwd ?? s.id, style: `--hc:${harnessInfo(s.harness).color}` },
         h('span.of-room-dot.' + (urgent.has(s.id) ? 'waiting' : s.status)),
         clip(s.meta.title ?? s.meta.project ?? s.id.slice(0, 8), 26),
+        counts.get(s.id) ? h('span.of-room-badge' + (urgent.has(s.id) ? '.urgent' : ''), { title: `${counts.get(s.id)} need${counts.get(s.id) === 1 ? 's' : ''} you` }, String(counts.get(s.id))) : '',
       )),
     )
   }
@@ -321,8 +326,42 @@ function mount(root: HTMLElement, vctx: VizContext) {
     h('span.of-sticky.pink', null, stats.tokens, 'tokens'),
   )
   const needsSticky = stats.needs.parentElement as HTMLElement
-  needsSticky.title = 'Show the front desk'
-  d.listen(needsSticky, 'click', () => { settings.set('office.sidebar', true); q('.of-desk').scrollTo({ top: 0, behavior: 'smooth' }) })
+  needsSticky.title = 'Who needs you'
+  const needsPop = q('.of-needs-pop')
+  const needsRows = h('div.of-needs-rows')
+  needsPop.append(
+    h('div.of-needs-head', null, h('b', null, 'Needs you'), h('span.of-grow'), h('button.of-clear', { onclick: () => attention.ackAll(), title: 'Acknowledge everything (X)' }, 'clear all')),
+    needsRows,
+  )
+  const needsList = new KeyedList<AttentionItem>(needsRows, {
+    key: (i) => i.id,
+    create: (i) => h('div.of-attn-row.' + i.severity, { onclick: () => { closeNeeds(); focus(i.sessionId, i.agentId) }, title: i.detail ?? '' },
+      h('span.of-attn-ico', null, ATTN_ICON[i.kind]),
+      h('div.of-attn-txt', null, h('b', null, i.title), h('span', null, sessionName(i.sessionId))),
+      h('span.of-attn-age'),
+      h('button.of-ack', { onclick: (e: Event) => { e.stopPropagation(); attention.ack(i.id) }, title: 'Acknowledge' }, '✓'),
+    ),
+    update: (el, i) => { el.querySelector('.of-attn-age')!.textContent = formatDuration(Date.now() - i.since) },
+    collapse: true,
+  })
+  function renderNeeds(): void {
+    if (needsPop.hidden) return
+    const items = attention.open().filter((a) => a.severity !== 'low')
+    needsList.sync(items)
+    if (!items.length) closeNeeds()
+  }
+  function closeNeeds(): void { needsPop.hidden = true; needsSticky.classList.remove('open') }
+  d.listen(needsSticky, 'click', () => {
+    if (!needsPop.hidden) return closeNeeds()
+    needsPop.hidden = false
+    needsSticky.classList.add('open')
+    renderNeeds()
+  })
+  d.listen(window, 'pointerdown', (e: Event) => {
+    const t = e.target as Node
+    if (!needsPop.hidden && !needsPop.contains(t) && !needsSticky.contains(t)) closeNeeds()
+  })
+  d.listen(window, 'keydown', (e: KeyboardEvent) => { if (e.key === 'Escape' && !needsPop.hidden) closeNeeds() })
 
   function renderTop(now: number): void {
     const world = client.world
@@ -430,7 +469,7 @@ function mount(root: HTMLElement, vctx: VizContext) {
     diffs.sync(changes)
     feed.sync(intercom.filter((e) => model.rooms.has(e.sessionId)).slice(-10).reverse())
   }
-  d.add(attention.subscribe(() => { renderDesk(); renderRooms() }))
+  d.add(attention.subscribe(() => { renderDesk(); renderRooms(); renderNeeds() }))
 
   // ─── Card ─────────────────────────────────────────────────────────────
   const card = q('.of-card')
