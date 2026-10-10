@@ -216,9 +216,6 @@ export class ClaudeTranscriptParser implements LineParser {
       case 'pr-link':
         if (str(r.prUrl)) this.sendSession(ts, { prUrl: r.prUrl as string })
         return
-      case 'mode':
-        if (str(r.mode)) this.sendSession(ts, { permissionMode: r.mode as string })
-        return
       case 'progress':
         this.progress(r)
         return
@@ -242,6 +239,8 @@ export class ClaudeTranscriptParser implements LineParser {
     }
 
     this.ensureStarted(r, ts)
+    // Each prompt records the permission mode it ran under (default, acceptEdits, auto, bypassPermissions, plan…).
+    if (type === 'user' && str(r.permissionMode)) this.sendSession(ts, { permissionMode: r.permissionMode as string })
     const msg = r.message
     if (!isRecord(msg)) return
     if (type === 'assistant') this.assistant(r, msg, ts)

@@ -86,8 +86,8 @@ meet it; the expression and body motion follow the shared activity model.
 Click any blob for its profile card: mood, role, model, current task, recent
 tools and the files it just changed, and for the lead the session's turns,
 cost and context fill. Drag to pan and scroll to zoom. `F` fits the view, `L`
-toggles name tags, `D` toggles the front desk sidebar, `A` follows all live
-rooms, `J`/`K` step through rooms and `X` acknowledges everything.
+toggles name tags, `D` toggles the front desk sidebar, `A` shows all rooms,
+`J`/`K` step through rooms and `X` acknowledges everything.
 
 The **front desk** sidebar (toggle with `D` or in Settings; it never
 covers the office) shares Mission Control's attention queue: approvals,

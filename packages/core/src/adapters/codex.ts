@@ -137,6 +137,7 @@ export class CodexRolloutParser implements LineParser {
   private threadId: string | undefined
   private cwd: string | undefined
   private model: string | undefined
+  private approval: string | undefined
   private metaSeen = false
   private isSubagent = false
   private titled = false
@@ -237,6 +238,12 @@ export class CodexRolloutParser implements LineParser {
   }
 
   private turnContext(p: Record<string, unknown>, ts: number): void {
+    // Codex's approval policy (never, on-request, on-failure, untrusted) plays the role of Claude's permission mode.
+    const approval = str(p.approval_policy)
+    if (approval && approval !== this.approval && !this.isSubagent) {
+      this.approval = approval
+      this.send(ts, { kind: 'session.updated', meta: { permissionMode: approval } })
+    }
     const model = str(p.model)
     const cwd = str(p.cwd)
     if (cwd) this.cwd = cwd

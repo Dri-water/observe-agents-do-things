@@ -22,6 +22,18 @@ export function isLive(s: SessionState): boolean {
   return s.status === 'working' || s.status === 'waiting'
 }
 
+/** How long an idle session still counts as recent (ms). */
+export const RECENT_MS = 3 * 3_600_000
+
+/**
+ * The sessions a dashboard shows by default: every live one, plus any active
+ * within `recentMs`. A conversation is idle between your messages, so "live"
+ * alone would make it blink in and out. Ordered like `sessionList`.
+ */
+export function recentSessions(world: WorldState, now = Date.now(), recentMs = RECENT_MS): SessionState[] {
+  return sessionList(world).filter((s) => isLive(s) || now - s.lastActivityAt < recentMs)
+}
+
 /** The most recently active session, preferring live ones. */
 export function mostRecentSession(world: WorldState): SessionState | undefined {
   let best: SessionState | undefined

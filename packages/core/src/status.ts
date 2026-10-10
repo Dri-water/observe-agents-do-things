@@ -4,14 +4,27 @@
  * Transcripts say what happened, not what is happening *now*. A ticker turns
  * silence into status:
  *
- *  - waiting: a non-agent tool has been in flight for `waitingAfterMs` and the
- *             session has written nothing since — almost always a permission
- *             prompt (or a long-running command).
+ *  - waiting: a non-agent tool has been in flight for `waitingAfterMs`, the
+ *             session has written nothing since, and the session's permission
+ *             mode could have stopped that tool for approval. Otherwise the
+ *             tool is simply still running.
  *  - idle:    nothing in flight and quiet for `idleAfterMs`, or quiet for
  *             `staleAfterMs` regardless (the harness was closed mid-turn).
  *  - done:    a subagent with nothing in flight that has been quiet for `idleAfterMs`.
  */
-import type { EventDraft, WorldState } from '@oadt/protocol'
+import type { EventDraft, ToolCategory, WorldState } from '@oadt/protocol'
+
+/** Modes in which the harness never stops a tool to ask (Claude Code and Codex names). */
+const NEVER_ASKS = new Set(['bypassPermissions', 'dontAsk', 'auto', 'never'])
+
+/** Whether a pending tool could be waiting on a permission prompt, given the session's permission mode. */
+export function mayAwaitApproval(mode: string | undefined, category: ToolCategory): boolean {
+  if (category === 'interact') return true // a question for the user always waits on them
+  if (category === 'read' || category === 'search' || category === 'plan') return false
+  if (mode && NEVER_ASKS.has(mode)) return false
+  if (mode === 'acceptEdits' && (category === 'edit' || category === 'write')) return false
+  return true
+}
 
 export interface StatusOptions {
   waitingAfterMs: number
@@ -43,11 +56,12 @@ export function statusTransitions(world: WorldState, now: number, opts: StatusOp
       const open = a.activeTools.map((id) => s.tools[id]).filter((t) => t && t.endedAt === undefined && t.category !== 'agent')
       if (open.length) anyOpen = true
       const agentQuiet = now - a.lastActivityAt
-      if (a.status === 'working' && open.length) {
-        const oldest = Math.min(...open.map((t) => t!.startedAt))
+      const gated = open.filter((t) => mayAwaitApproval(s.meta.permissionMode, t!.category))
+      if (a.status === 'working' && gated.length) {
+        const oldest = Math.min(...gated.map((t) => t!.startedAt))
         if (now - oldest >= opts.waitingAfterMs && quiet >= opts.waitingAfterMs) {
           anyWaiting = true
-          out.push({ ...base, agentId: a.id, kind: 'agent.status', status: 'waiting', reason: `${open[0]!.title} — awaiting approval or still running` })
+          out.push({ ...base, agentId: a.id, kind: 'agent.status', status: 'waiting', reason: `${gated[0]!.title} — awaiting approval or still running` })
         }
       } else if (a.status === 'waiting') {
         anyWaiting = true

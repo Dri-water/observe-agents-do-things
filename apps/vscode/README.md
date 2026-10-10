@@ -18,15 +18,15 @@ Keep using Claude Code and Codex exactly as you do now: the CLIs, the IDE extens
 
 ## Usage
 
-Run **Observe Agents: Open Dashboard** from the Command Palette, or click the status bar item.
+Click the **Agents** icon in the activity bar or the **Agents** tab in the bottom panel, click the status bar item, or run **Observe Agents: Open Dashboard in Editor** from the Command Palette.
 
-The extension looks for an observer at `observeAgents.serverUrl` (default `http://127.0.0.1:4545`). If one is already running there, from the `oadt` CLI, the Docker container or another VS Code window, it uses that one. Otherwise it starts one inside VS Code, so several windows share a single observer.
+The extension looks for an observer at `observeAgents.serverUrl` (default `http://127.0.0.1:4545`), from the `oadt` CLI or the Docker container. If none answers, VS Code runs its own on a free port, shared by all your windows, and switches back to the CLI or Docker one as soon as it starts. It never takes that address itself, so they can always start.
 
 | Setting | Default | |
 |---|---|---|
 | `observeAgents.statusBar` | `true` | Show what needs you and how many agents are working. |
 | `observeAgents.notifications` | `false` | Show a notification when an agent is waiting for approval or keeps failing. |
-| `observeAgents.serverUrl` | `http://127.0.0.1:4545` | Where to find or start the observer. |
+| `observeAgents.serverUrl` | `http://127.0.0.1:4545` | Where the CLI or Docker observer runs. |
 | `observeAgents.token` | | Only for an observer that runs with `--token` on another machine. |
 
 ## Privacy

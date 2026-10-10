@@ -10,10 +10,9 @@ import {
   formatAgo,
   formatCount,
   formatDuration,
-  isLive,
   mostRecentSession,
   recentChanges,
-  sessionList,
+  recentSessions,
   shortPath,
   totalTokens,
   type AttentionItem,
@@ -50,6 +49,8 @@ export const office: Visualization = {
   mount,
 }
 
+/** Rooms on stage at once in the all-rooms view. */
+const MAX_ROOMS = 6
 const ATTN_ICON: Record<AttentionItem['kind'], string> = { waiting: '⏸', errors: '✕', finished: '✓', aborted: '■', context: '◔', 'long-tool': '⧗' }
 
 const TEMPLATE = `
@@ -126,10 +127,11 @@ function mount(root: HTMLElement, vctx: VizContext) {
     if (intercom.length > 60) intercom.splice(0, intercom.length - 40)
   }))
 
+  /** The rooms on stage: the same sessions Mission Control shows by default, the most relevant few. Sorted by start so rooms keep their places. */
   function visibleSessions(world: WorldState): string[] {
     if (ui.view !== 'auto') return world.sessions[ui.view] ? [ui.view] : []
-    const live = sessionList(world).filter(isLive).slice(0, 4).sort((a, b) => a.startedAt - b.startedAt || (a.id < b.id ? -1 : 1)).map((s) => s.id)
-    if (live.length) return live
+    const shown = recentSessions(world).slice(0, MAX_ROOMS).sort((a, b) => a.startedAt - b.startedAt || (a.id < b.id ? -1 : 1)).map((s) => s.id)
+    if (shown.length) return shown
     const recent = mostRecentSession(world)
     return recent ? [recent.id] : []
   }
@@ -239,7 +241,7 @@ function mount(root: HTMLElement, vctx: VizContext) {
   d.listen(q('.of-clear'), 'click', () => attention.ackAll())
 
   /** The rooms you can cycle through with J/K: all live, then each recent session. */
-  const roomChoices = () => ['auto', ...sessionList(client.world).filter((s) => isLive(s) || Date.now() - s.lastActivityAt < 3 * 3600_000).slice(0, 10).map((s) => s.id)]
+  const roomChoices = () => ['auto', ...recentSessions(client.world).slice(0, 10).map((s) => s.id)]
   d.listen(window, 'keydown', (e: KeyboardEvent) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.metaKey || e.ctrlKey || e.altKey) return
     switch (e.key) {
@@ -288,9 +290,9 @@ function mount(root: HTMLElement, vctx: VizContext) {
     if (pressingRooms) return
     const world = client.world
     const urgent = new Set(attention.open().filter((a) => a.severity === 'high').map((a) => a.sessionId))
-    const list = sessionList(world).filter((s) => isLive(s) || Date.now() - s.lastActivityAt < 3 * 3600_000).slice(0, 10)
+    const list = recentSessions(world).slice(0, 10)
     roomsEl.replaceChildren(
-      h('button.of-room' + (ui.view === 'auto' ? '.on' : ''), { onclick: () => setView('auto') }, h('span.of-room-dot.live'), 'All live rooms'),
+      h('button.of-room' + (ui.view === 'auto' ? '.on' : ''), { onclick: () => setView('auto') }, h('span.of-room-dot.live'), 'All rooms'),
       ...list.map((s) => h('button.of-room' + (ui.view === s.id ? '.on' : '') + (urgent.has(s.id) ? '.urgent' : ''), { onclick: () => setView(s.id), title: s.meta.cwd ?? s.id, style: `--hc:${harnessInfo(s.harness).color}` },
         h('span.of-room-dot.' + (urgent.has(s.id) ? 'waiting' : s.status)),
         clip(s.meta.title ?? s.meta.project ?? s.id.slice(0, 8), 26),

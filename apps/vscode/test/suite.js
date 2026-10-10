@@ -1,5 +1,8 @@
 // Runs inside VS Code: the extension starts an observer and opens the dashboard tab.
 const assert = require('node:assert/strict')
+const fs = require('node:fs')
+const os = require('node:os')
+const path = require('node:path')
 const vscode = require('vscode')
 
 async function waitFor(check, ms = 15000) {
@@ -17,13 +20,14 @@ exports.run = async function run() {
   assert.ok(ext, 'extension is installed')
   await ext.activate()
 
-  const info = await waitFor(async () => {
-    const res = await fetch('http://127.0.0.1:4599/api/info')
-    return res.ok ? res.json() : undefined
-  })
-  assert.equal(info.protocol, 1, 'an embedded observer answers on the configured address')
+  // VS Code's own observer runs on a free port and is announced to other windows through a file.
+  const url = await waitFor(async () => JSON.parse(fs.readFileSync(path.join(os.tmpdir(), 'oadt-vscode-observer.json'), 'utf8')).url)
+  const info = await (await fetch(`${url}/api/info`)).json()
+  assert.equal(info.protocol, 1, 'the observer VS Code started answers')
+  assert.notEqual(new URL(url).port, '4599', 'it leaves the configured address free for the CLI or Docker')
+  await assert.rejects(fetch('http://127.0.0.1:4599/api/info'), 'nothing squats on the configured address')
 
-  const ui = await fetch('http://127.0.0.1:4599/')
+  const ui = await fetch(`${url}/`)
   assert.equal(ui.status, 200, 'the embedded observer serves the dashboard')
   assert.match(await ui.text(), /<div id="viz-root">/)
 

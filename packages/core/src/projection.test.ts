@@ -97,6 +97,25 @@ test('status heuristics: waiting on a stuck tool, idle when quiet', () => {
   assert.ok(idle.some((d) => d.kind === 'session.status' && d.status === 'idle'))
 })
 
+test('a long command is only "waiting" when the permission mode could have asked', () => {
+  for (const [mode, expectWaiting] of [['auto', false], ['bypassPermissions', false], ['never', false], ['default', true], [undefined, true]] as const) {
+    const w = createWorld()
+    if (mode) applyEvent(w, ev({ kind: 'session.updated', meta: { permissionMode: mode } }, 900))
+    applyEvent(w, ev({ kind: 'tool.started', callId: 'c', tool: 'Bash', category: 'shell', title: '$ python render.py' }, 1000))
+    const out = statusTransitions(w, 60_000)
+    assert.equal(out.some((d) => d.kind === 'session.status' && d.status === 'waiting'), expectWaiting, `mode ${mode}`)
+  }
+})
+
+test('reads and searches never wait on approval; edits do not in acceptEdits mode', async () => {
+  const { mayAwaitApproval } = await import('./status.js')
+  assert.equal(mayAwaitApproval('default', 'read'), false)
+  assert.equal(mayAwaitApproval('default', 'search'), false)
+  assert.equal(mayAwaitApproval('acceptEdits', 'edit'), false)
+  assert.equal(mayAwaitApproval('acceptEdits', 'shell'), true)
+  assert.equal(mayAwaitApproval('auto', 'interact'), true, 'a question for the user always waits on them')
+})
+
 test('store assigns sequence numbers and serves resumable history', () => {
   const store = new EventStore({ maxEvents: 100 })
   for (let i = 0; i < 300; i++) store.push({ harness: 'x', sessionId: i % 2 ? 'a' : 'b', agentId: i % 2 ? 'a' : 'b', ts: i, kind: 'thinking' })

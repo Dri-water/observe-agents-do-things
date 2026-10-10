@@ -71,7 +71,7 @@
         "observeAgents.serverUrl": {
           "type": "string",
           "default": "http://127.0.0.1:4545",
-          "markdownDescription": "Where the observer runs. If one is already running there (the `oadt` CLI, the Docker container or another VS Code window), the extension uses it; otherwise it starts one inside VS Code on this address."
+          "markdownDescription": "Where the `oadt` CLI or the Docker container serves the observer. When one answers here the extension uses it; otherwise VS Code runs its own on a free port (shared by all windows) and switches back as soon as this address answers."
         },
         "observeAgents.token": {
           "type": "string",

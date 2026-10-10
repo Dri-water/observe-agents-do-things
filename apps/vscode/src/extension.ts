@@ -3,11 +3,16 @@
  * the panel or an editor tab, plus a status bar item that says when an agent
  * needs you.
  *
- * It uses an observer that is already running at `observeAgents.serverUrl`
- * (the CLI, the Docker container or another VS Code window) and only starts
- * one inside VS Code when there is none, so several windows share one.
+ * It uses the observer at `observeAgents.serverUrl` (the CLI or the Docker
+ * container) when one answers there. Otherwise it runs one inside VS Code on
+ * a free port, never on the configured address, so the CLI or Docker can
+ * always start later; it switches back to them as soon as they answer. Windows
+ * share the observer VS Code started through a small file in the temp folder.
  */
 import * as vscode from 'vscode'
+import { readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { connect, type ObserverClient } from '@oadt/client'
 import { Observer } from '@oadt/core'
 import { attentionItems, isLive, type AttentionItem, type WorldState } from '@oadt/protocol'
@@ -21,9 +26,16 @@ interface Backend {
   url: string
   token?: string
   client: ObserverClient
+  /** True when this is the observer at observeAgents.serverUrl rather than one VS Code runs. */
+  configured: boolean
   /** Set when this window started the observer itself. */
   close?: () => Promise<void>
 }
+
+/** Where a window that runs an observer tells the others about it. */
+const SHARED_FILE = join(tmpdir(), 'oadt-vscode-observer.json')
+/** How often to look for the CLI or Docker observer while VS Code runs its own (ms). */
+const RECHECK_MS = 10_000
 
 let backend: Backend | undefined
 let starting: Promise<Backend> | undefined
@@ -55,7 +67,8 @@ export function activate(ctx: vscode.ExtensionContext): void {
     }),
   )
   const timer = setInterval(render, 2000)
-  ctx.subscriptions.push({ dispose: () => clearInterval(timer) })
+  const recheckTimer = setInterval(() => void recheck(), RECHECK_MS)
+  ctx.subscriptions.push({ dispose: () => { clearInterval(timer); clearInterval(recheckTimer) } })
   if (setting<boolean>('statusBar')) ensureBackend().catch(() => render())
 }
 
@@ -76,30 +89,54 @@ function ensureBackend(): Promise<Backend> {
 }
 
 async function start(): Promise<Backend> {
-  const configured = setting<string>('serverUrl').replace(/\/+$/, '')
+  const configuredUrl = setting<string>('serverUrl').replace(/\/+$/, '')
   const token = setting<string>('token') || undefined
-  let url = configured
+  let url = configuredUrl
+  let configured = true
   let close: (() => Promise<void>) | undefined
   if (!(await isObserver(url, token))) {
-    const target = new URL(configured)
+    const target = new URL(configuredUrl)
     if (!['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname)) {
-      throw new Error(`No observer answers at ${configured}. Start one there, or point observeAgents.serverUrl at 127.0.0.1 to run it inside VS Code.`)
+      throw new Error(`No observer answers at ${configuredUrl}. Start one there, or point observeAgents.serverUrl at 127.0.0.1 to run it inside VS Code.`)
     }
-    const embedded = await startEmbedded(Number(target.port || 80))
-    url = embedded.url
-    close = embedded.close
+    configured = false
+    const shared = readShared()
+    if (shared && (await isObserver(shared))) {
+      url = shared
+    } else {
+      const embedded = await startEmbedded()
+      url = embedded.url
+      close = embedded.close
+    }
   }
-  const client = connect({ url, token })
+  const client = connect({ url, token: configured ? token : undefined })
   client.onChange(() => render())
   client.on('status', (s) => {
     render()
-    // If the window that ran the observer closed, take over.
+    // If the observer went away (Docker restarting, or the window that ran it closed), find or start another.
     if (s === 'reconnecting' && !close) setTimeout(() => { if (backend?.client === client && client.status !== 'live') void restart() }, 3000)
   })
   client.connect()
-  backend = { url, token, client, close }
+  backend = { url, token, client, configured, close }
   render()
   return backend
+}
+
+/** While VS Code runs its own observer, switch to the CLI or Docker one as soon as it answers. */
+async function recheck(): Promise<void> {
+  const b = backend
+  if (!b || b.configured || starting) return
+  const configuredUrl = setting<string>('serverUrl').replace(/\/+$/, '')
+  if (await isObserver(configuredUrl, setting<string>('token') || undefined)) await restart()
+}
+
+function readShared(): string | undefined {
+  try {
+    const { url } = JSON.parse(readFileSync(SHARED_FILE, 'utf8')) as { url?: string }
+    return typeof url === 'string' ? url : undefined
+  } catch {
+    return undefined
+  }
 }
 
 async function isObserver(url: string, token?: string): Promise<boolean> {
@@ -115,21 +152,28 @@ async function isObserver(url: string, token?: string): Promise<boolean> {
   }
 }
 
-async function startEmbedded(port: number): Promise<{ url: string; close: () => Promise<void> }> {
+/** An observer inside VS Code on a free port, announced to the other windows. */
+async function startEmbedded(): Promise<{ url: string; close: () => Promise<void> }> {
   const observer = new Observer({ sinceMs: 6 * 3_600_000 })
   await observer.start()
   const uiDir = vscode.Uri.joinPath(context.extensionUri, 'ui').fsPath
-  // Prefer the shared address so other windows find this observer; fall back to any free port.
-  for (const p of [port, 0]) {
-    const server = new ObserverServer({ observer, host: '127.0.0.1', port: p, uiDir })
-    try {
-      const { url } = await server.listen()
-      return { url, close: async () => { observer.stop(); await server.close() } }
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'EADDRINUSE' || p === 0) { observer.stop(); throw err }
-    }
+  const server = new ObserverServer({ observer, host: '127.0.0.1', port: 0, uiDir })
+  let url: string
+  try {
+    url = (await server.listen()).url
+  } catch (err) {
+    observer.stop()
+    throw err
   }
-  throw new Error('unreachable')
+  try { writeFileSync(SHARED_FILE, JSON.stringify({ url, pid: process.pid })) } catch { /* other windows will start their own */ }
+  return {
+    url,
+    close: async () => {
+      if (readShared() === url) rmSync(SHARED_FILE, { force: true })
+      observer.stop()
+      await server.close()
+    },
+  }
 }
 
 async function shutdown(): Promise<void> {

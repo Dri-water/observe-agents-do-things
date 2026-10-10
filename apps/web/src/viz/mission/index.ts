@@ -16,6 +16,7 @@ import {
   isLive,
   openTools,
   recentChanges,
+  RECENT_MS,
   agentActivity,
   sessionActivity,
   sessionList,
@@ -272,7 +273,7 @@ function mount(root: HTMLElement, vctx: VizContext) {
     const text = ui.search.trim().toLowerCase()
     const urgent = new Set(attention.open().filter((a) => a.severity === 'high').map((a) => a.sessionId))
     return sessionList(world)
-      .filter((s) => scope === 'all' || isLive(s) || (scope === 'recent' && now - s.lastActivityAt < 3 * 3600_000) || s.id === ui.selected)
+      .filter((s) => scope === 'all' || isLive(s) || (scope === 'recent' && now - s.lastActivityAt < RECENT_MS) || s.id === ui.selected)
       .filter((s) => !text || [s.meta.title, s.meta.project, s.meta.gitBranch, s.meta.cwd, s.harness, s.id].some((v) => v?.toLowerCase().includes(text)))
       .sort((a, b) => Number(urgent.has(b.id)) - Number(urgent.has(a.id)) || Number(isLive(b)) - Number(isLive(a)) || b.lastActivityAt - a.lastActivityAt)
   }

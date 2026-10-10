@@ -84,6 +84,7 @@ export interface SessionMeta {
   /** How the harness was launched, e.g. `claude-desktop`, `cli`, `Codex Desktop`. */
   entrypoint?: string
   transcriptPath?: string
+  /** Claude Code's permission mode or Codex's approval policy, as the harness names it. */
   permissionMode?: string
   costUsd?: number
   linesAdded?: number
