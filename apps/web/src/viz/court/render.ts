@@ -316,6 +316,9 @@ function drawFrame(
   CANDLES.forEach((p) => back.push({ depth: p.x + TX + p.y - 0.2, draw: shifted(() => drawCraneCandle(ctx, p.x, p.y, now, lights)) }))
   back.push({ depth: CLOCK.x + CLOCK.w + CLOCK.y + CLOCK.d - 0.6, draw: () => drawClockTower(ctx, f.mono ? 'great-hall' : first.hall.id, Math.max(...pods.map((p) => p.hall.drumAt)), now, dt, running, lights) })
   if (rs.throne === 'emperor') back.push({ depth: THRONE.x + TX + THRONE.y + 0.1, draw: shifted(() => drawEmperor(ctx, { pal, day, now, hc, throne: rs.throne }, anyWaiting, first.s)) })
+  if (f.mono) for (const dc of hallDecor(HW, HD)) {
+    back.push({ depth: dc.x + dc.y, draw: () => (dc.prop === 'lantern' ? drawPoleLantern(ctx, dc.x, dc.y, now, lights, dc.seed) : drawBayProp(ctx, dc.prop, dc.x, dc.y, now, dc.seed, hc)) })
+  }
   back.sort((a, b) => a.depth - b.depth)
   for (const sp of back) sp.draw()
 
@@ -327,7 +330,8 @@ function drawFrame(
     const podLights: Light[] = []
     ctx.save()
     ctx.translate(po.x, po.y)
-    drawPodFloor(ctx, hall, f.mono, pod.hc)
+    const look = bayLook(hall.seed, f.mono)
+    drawPodFloor(ctx, hall, f.mono, pod.hc, look)
     for (const m of hall.ministers.values()) {
       if (m.mode !== 'kneeling' && m.mode !== 'resting') blobShadow(ctx, m.x, m.y, 0.36, 0.3 * m.alpha)
     }
@@ -340,11 +344,22 @@ function drawFrame(
       const agent = occ ? s.agents[occ.id] : undefined
       const act = occ && occ.mode === 'kneeling' ? acts.get(occ.id) : undefined
       const fill = agent?.contextTokens && agent.contextWindow ? Math.min(1, agent.contextTokens / agent.contextWindow) : d.lead && s.contextTokens && s.contextWindow ? Math.min(1, s.contextTokens / s.contextWindow) : undefined
-      add(d.x + d.w / 2 + d.y + d.d / 2 + (d.facing === -1 ? -0.4 : 0), () => drawDesk(ctx, d, act?.activity, fill, now, i, podLights, day))
+      add(d.x + d.w / 2 + d.y + d.d / 2 + (d.facing === -1 ? -0.4 : 0), () => drawDesk(ctx, d, act?.activity, fill, now, i, podLights, day, look?.lacquer))
     })
     const tea = hall.layout.tea.table
     add(tea.x + tea.y, () => drawTeaTable(ctx, tea.x, tea.y, now))
-    if (f.mono) add(0.6 - 0.15, () => drawPodSign(ctx, hall, s, pod.hc, now, rs.lang))
+    if (f.mono) {
+      add(0.6 - 0.15, () => drawPodSign(ctx, hall, s, pod.hc, now, rs.lang))
+      bayProps(hall.seed).forEach((prop, k) => {
+        const [x, y] = BAY_PROP_SPOTS[k]!
+        add(x + y, () => drawBayProp(ctx, prop, x, y, now, hall.seed + k, pod.hc))
+      })
+      // A censer or a basket of scrolls between some ranks.
+      for (let r = 1; r < hall.rows; r++) if (rnd(hall.seed, r, 9) < 0.5) {
+        const y = 2.75 + r * 1.75 - 0.85
+        add(2.7 + y, () => drawBayProp(ctx, rnd(hall.seed, r, 10) < 0.5 ? 'censer' : 'basket', 2.7, y, now, hall.seed + r, pod.hc))
+      }
+    }
     else add(f.cat.x + f.cat.y, () => drawCat(ctx, f.cat, now))
     for (const m of hall.ministers.values()) {
       const act = acts.get(m.id)!
@@ -439,7 +454,8 @@ function drawStatic(ctx: CanvasRenderingContext2D, day: number): void {
 }
 
 /** A delegation's floor: its rug (in the great hall), mats, the Chancellor's platform, the tea mat and cushions, desk shadows. */
-function drawPodFloor(ctx: CanvasRenderingContext2D, hall: Hall, mono: boolean, hc: string): void {
+function drawPodFloor(ctx: CanvasRenderingContext2D, hall: Hall, mono: boolean, hc: string, look?: BayLook): void {
+  const mat = look?.mat ?? pal.mat
   if (mono) {
     // The bay's rug, edged in the harness colour.
     const ys = hall.desks.map((d) => d.y + d.d)
@@ -452,11 +468,15 @@ function drawPodFloor(ctx: CanvasRenderingContext2D, hall: Hall, mono: boolean, 
     const mw = d.lead ? 1.15 : 0.86, md = d.lead ? 0.86 : 0.8
     const mz = d.lead ? LEAD_Z : 0
     if (d.lead) box(ctx, s.x - mw / 2 - 0.1, s.y - md / 2 - 0.1, 0, mw + 0.2, md + 0.2, LEAD_Z, pal.lacquer, { top: shade(pal.lacquer, 0.15) })
-    floorQuad(ctx, s.x - mw / 2, s.y - md / 2, mw, md, shade(pal.mat, -0.12), mz + 0.004)
-    floorQuad(ctx, s.x - mw / 2 + 0.05, s.y - md / 2 + 0.05, mw - 0.1, md - 0.1, pal.mat, mz + 0.005)
-    for (let k = 0.12; k < mw - 0.1; k += 0.1) line(ctx, iso(s.x - mw / 2 + 0.05 + k, s.y - md / 2 + 0.05, mz + 0.006), iso(s.x - mw / 2 + 0.05 + k, s.y + md / 2 - 0.05, mz + 0.006), alpha(shade(pal.mat, -0.3), 0.3), 0.7)
+    floorQuad(ctx, s.x - mw / 2, s.y - md / 2, mw, md, shade(mat, -0.12), mz + 0.004)
+    floorQuad(ctx, s.x - mw / 2 + 0.05, s.y - md / 2 + 0.05, mw - 0.1, md - 0.1, mat, mz + 0.005)
+    for (let k = 0.12; k < mw - 0.1; k += 0.1) line(ctx, iso(s.x - mw / 2 + 0.05 + k, s.y - md / 2 + 0.05, mz + 0.006), iso(s.x - mw / 2 + 0.05 + k, s.y + md / 2 - 0.05, mz + 0.006), alpha(shade(mat, -0.3), 0.3), 0.7)
     castShadow(ctx, d.x, d.y, d.w, d.d, 0.38, 0.14)
   }
+  hall.desks.forEach((d, i) => {
+    const m = hall.mess[i]
+    if (m && (m.papers || m.crumples)) drawDeskMess(ctx, d, m.papers, m.crumples, hall.seed + i * 29)
+  })
   const { x, y, w, d } = hall.layout.tea.rug
   floorQuad(ctx, x, y, w, d, shade(pal.carpet, 0.05), 0.003)
   floorQuad(ctx, x + 0.1, y + 0.1, w - 0.2, d - 0.2, mix(pal.carpet, pal.paper, 0.35), 0.004)
@@ -516,7 +536,8 @@ function drawPodBanner(ctx: CanvasRenderingContext2D, origin: Pt, hall: Hall, ac
   const p = iso(1.05, -0.2, 2.4)
   ctx.save()
   ctx.translate(origin.x + p.x, origin.y + p.y)
-  const k = clamp((0.7 - zoom) / 0.12, 0, 1)
+  // Fade in quickly once the camera is far enough out that the signboards can't be read.
+  const k = clamp((0.66 - zoom) / 0.04, 0, 1)
   ctx.globalAlpha = k
   ctx.scale(0.75 / zoom, 0.75 / zoom)
   const name = hallName(hall.nameIdx)
@@ -1388,9 +1409,9 @@ export function activityColor(activity: Activity, hc: string): string {
   return mix('#ffe2a8', hc, 0.3)
 }
 
-function drawDesk(ctx: CanvasRenderingContext2D, desk: Desk, activity: Activity | undefined, fill: number | undefined, now: number, idx: number, lights: Light[], day: number): void {
+function drawDesk(ctx: CanvasRenderingContext2D, desk: Desk, activity: Activity | undefined, fill: number | undefined, now: number, idx: number, lights: Light[], day: number, lacquer?: string): void {
   const { x, y, w, d, lead } = desk
-  const lac = pal.lacquer
+  const lac = lacquer ?? pal.lacquer
   const H = lead ? 0.4 : 0.36
   // Curved legs suggested by two slab ends, then the lacquered top with a raised lip.
   const ends = d > w ? [[x + 0.04, y + 0.02, w - 0.08, 0.08], [x + 0.04, y + d - 0.1, w - 0.08, 0.08]] : [[x + 0.02, y + 0.04, 0.08, d - 0.08], [x + w - 0.1, y + 0.04, 0.08, d - 0.08]]
@@ -1558,3 +1579,230 @@ function drawDing(ctx: CanvasRenderingContext2D, x: number, y: number, now: numb
   smoke(ctx, { x: rim.x, y: rim.y - 2 }, now, live ? 4 : 1, x, 'rgba(240,236,230,0.5)', live ? 70 : 30)
 }
 
+// ─── A lived-in court: delegation furnishings, decor, and the mess work leaves ─
+
+/** How a delegation furnishes its bay (great hall only; a classic hall keeps the palette's own). */
+export interface BayLook { lacquer: string; mat: string }
+
+export function bayLook(seed: number, mono: boolean): BayLook | undefined {
+  if (!mono) return undefined
+  const lacquers = [pal.lacquer, shade(pal.lacquer, 0.14), mix(pal.lacquer, '#3a2a20', 0.55), mix(pal.lacquer, '#1d2a33', 0.45)]
+  const mats = [pal.mat, shade(pal.mat, -0.1), mix(pal.mat, '#a9bb8f', 0.35), mix(pal.mat, '#d9b7a0', 0.4)]
+  return { lacquer: lacquers[seed % lacquers.length]!, mat: mats[(seed >>> 2) % mats.length]! }
+}
+
+type BayProp = 'peony' | 'bonsai' | 'banner' | 'drum' | 'rack' | 'screen' | 'basket' | 'censer'
+
+/** Spots in a bay clear of desks and walkways: left of the Chancellor, right of the Chancellor's desk. */
+const BAY_PROP_SPOTS: Array<[number, number]> = [[0.55, 1.35], [4.75, 1.05]]
+
+function bayProps(seed: number): BayProp[] {
+  const a: BayProp[] = ['peony', 'banner', 'bonsai', 'drum', 'peony']
+  const b: BayProp[] = ['rack', 'screen', 'basket', 'peony', 'bonsai', 'censer']
+  return [a[seed % a.length]!, b[(seed >>> 3) % b.length]!]
+}
+
+/** Memorials piled by the desk (edits) and crumpled drafts with ink blots (failures). */
+function drawDeskMess(ctx: CanvasRenderingContext2D, d: Desk, papers: number, crumples: number, seed: number): void {
+  // Finished memorials stacked on the floor at the end of the desk.
+  const px = d.x + d.w / 2 + (d.lead ? 0.75 : 0), py = d.y + d.d + 0.16
+  for (let k = 0; k < Math.min(papers, 8); k++) {
+    const layer = Math.floor(k / 3), slot = k % 3
+    const a = iso(px - 0.16 + slot * 0.11 + layer * 0.05, py, 0.05 + layer * 0.07)
+    const b = iso(px - 0.16 + slot * 0.11 + layer * 0.05, py + 0.24, 0.05 + layer * 0.07)
+    line(ctx, a, b, k % 2 ? pal.paper : shade(pal.paper, -0.06), 4.2)
+    ctx.fillStyle = ['#b3261e', '#2e5394', '#c9952f'][(k + seed) % 3]!
+    ctx.beginPath(); ctx.ellipse(b.x, b.y, 2.1, 1.9, 0, 0, Math.PI * 2); ctx.fill()
+  }
+  for (let i = 0; i < crumples; i++) {
+    const a = rnd(seed, i, 5) * Math.PI * 2, r = 0.3 + rnd(seed, i, 6) * 0.3
+    const p = iso(d.seat.at.x + Math.cos(a) * r, d.seat.at.y + 0.2 + Math.abs(Math.sin(a)) * r, 0.006)
+    if (i % 2 === 0) {
+      // A spilled ink blot.
+      ctx.fillStyle = 'rgba(20,18,16,0.55)'
+      ctx.beginPath(); ctx.ellipse(p.x + 5, p.y + 1, 5 + rnd(seed, i) * 3, 2.2, 0.2, 0, Math.PI * 2); ctx.fill()
+    }
+    ctx.fillStyle = shade(pal.paper, 0.02)
+    ctx.beginPath(); ctx.arc(p.x, p.y - 2.2, 2.8, 0, Math.PI * 2); ctx.fill()
+    ctx.strokeStyle = alpha(pal.ink, 0.45)
+    ctx.lineWidth = 0.7
+    ctx.beginPath(); ctx.moveTo(p.x - 2, p.y - 3); ctx.lineTo(p.x + 0.5, p.y - 1.5); ctx.lineTo(p.x + 1.8, p.y - 3.3); ctx.stroke()
+  }
+}
+
+function drawBayProp(ctx: CanvasRenderingContext2D, prop: BayProp, x: number, y: number, now: number, seed: number, hc: string): void {
+  switch (prop) {
+    case 'peony': {
+      // Tree peonies (牡丹) in a celadon jardinière.
+      blobShadow(ctx, x, y, 0.36, 0.2)
+      cyl(ctx, x, y, 0, 0.22, 0.32, '#8fb8a6', { top: '#4a3a2c' })
+      line(ctx, iso(x - 0.22, y, 0.22), iso(x + 0.22, y, 0.22), 'rgba(255,255,255,0.35)', 1)
+      const base = iso(x, y, 0.32)
+      const sway = Math.sin(now / 1500 + seed) * 0.8
+      for (let i = 0; i < 9; i++) {
+        const a = (i / 9) * Math.PI * 2, r = 6 + rnd(seed, i) * 8
+        ctx.fillStyle = i % 2 ? '#4f8a5b' : '#6aa36f'
+        ctx.beginPath(); ctx.ellipse(base.x + Math.cos(a) * r + sway, base.y - 10 + Math.sin(a) * r * 0.5, 5, 2.6, a, 0, Math.PI * 2); ctx.fill()
+      }
+      const colors = ['#f19bb0', '#e8758f', '#fbe3e8', '#d94f6b']
+      for (let i = 0; i < 5; i++) {
+        const bx = base.x + (rnd(seed, i, 2) - 0.5) * 22 + sway, by = base.y - 12 - rnd(seed, i, 3) * 12
+        ctx.fillStyle = colors[(i + seed) % colors.length]!
+        ctx.beginPath(); ctx.arc(bx, by, 4.2, 0, Math.PI * 2); ctx.fill()
+        ctx.fillStyle = shade(colors[(i + seed) % colors.length]!, 0.3)
+        ctx.beginPath(); ctx.arc(bx - 1, by - 1, 2, 0, Math.PI * 2); ctx.fill()
+        ctx.fillStyle = '#e9c25a'; ctx.fillRect(bx - 0.6, by - 0.6, 1.2, 1.2)
+      }
+      break
+    }
+    case 'bonsai': {
+      // A pine bonsai on a low stand.
+      blobShadow(ctx, x, y, 0.42, 0.2)
+      box(ctx, x - 0.32, y - 0.22, 0, 0.64, 0.44, 0.32, pal.lacquer, { top: shade(pal.lacquer, 0.18) })
+      box(ctx, x - 0.26, y - 0.17, 0.32, 0.52, 0.34, 0.1, '#5b6b78', { top: '#4a3a2c' })
+      const b = iso(x, y, 0.42)
+      ctx.strokeStyle = '#4a3527'
+      ctx.lineCap = 'round'
+      ctx.lineWidth = 3
+      ctx.beginPath(); ctx.moveTo(b.x - 2, b.y); ctx.bezierCurveTo(b.x - 10, b.y - 10, b.x + 8, b.y - 14, b.x - 4, b.y - 26); ctx.stroke()
+      ctx.lineWidth = 1.6
+      ctx.beginPath(); ctx.moveTo(b.x - 1, b.y - 14); ctx.quadraticCurveTo(b.x + 10, b.y - 16, b.x + 14, b.y - 12); ctx.stroke()
+      for (const [dx, dy, rx] of [[-6, -27, 10], [12, -13, 8], [-10, -18, 7]] as const) {
+        ctx.fillStyle = '#3f6b4a'
+        ctx.beginPath(); ctx.ellipse(b.x + dx, b.y + dy, rx, 3.4, 0, 0, Math.PI * 2); ctx.fill()
+        ctx.fillStyle = '#5c8f63'
+        ctx.beginPath(); ctx.ellipse(b.x + dx - 1, b.y + dy - 1.2, rx * 0.7, 2, 0, 0, Math.PI * 2); ctx.fill()
+      }
+      break
+    }
+    case 'banner': {
+      // A tall pennant in the delegation's colour.
+      blobShadow(ctx, x, y, 0.22, 0.2)
+      cyl(ctx, x, y, 0, 0.12, 0.08, pal.marble)
+      const top = iso(x, y, 2.6), bot = iso(x, y, 0.08)
+      line(ctx, bot, top, pal.timberDark, 2.2)
+      ctx.fillStyle = pal.gold
+      ctx.beginPath(); ctx.arc(top.x, top.y - 2, 2.4, 0, Math.PI * 2); ctx.fill()
+      ctx.beginPath()
+      const len = 30
+      ctx.moveTo(top.x, top.y + 2)
+      for (let i = 0; i <= 10; i++) {
+        const t = i / 10
+        ctx.lineTo(top.x + 4 + t * 12 + Math.sin(now / 400 + t * 4 + seed) * 2 * t, top.y + 2 + t * len)
+      }
+      for (let i = 10; i >= 0; i--) {
+        const t = i / 10
+        ctx.lineTo(top.x + Math.sin(now / 400 + t * 4 + seed) * 2 * t, top.y + 2 + t * len + 4)
+      }
+      ctx.closePath()
+      ctx.fillStyle = mix(hc, pal.seal, 0.35)
+      ctx.fill()
+      ctx.strokeStyle = pal.gold
+      ctx.lineWidth = 0.8
+      ctx.stroke()
+      break
+    }
+    case 'drum': {
+      blobShadow(ctx, x, y, 0.38, 0.2)
+      for (const [dx, dy] of [[-0.2, -0.15], [0.2, -0.15], [0, 0.2]] as const) line(ctx, iso(x + dx, y + dy, 0), iso(x, y, 0.55), pal.timberDark, 2)
+      const c = iso(x, y, 0.8)
+      ctx.fillStyle = '#9e2b27'
+      ctx.beginPath(); ctx.ellipse(c.x, c.y, 13, 11, 0, 0, Math.PI * 2); ctx.fill()
+      ctx.fillStyle = '#ead8b0'
+      ctx.beginPath(); ctx.ellipse(c.x - 2, c.y, 9, 9, 0, 0, Math.PI * 2); ctx.fill()
+      ctx.fillStyle = pal.gold
+      for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; ctx.fillRect(c.x - 2 + Math.cos(a) * 10.5 - 0.6, c.y + Math.sin(a) * 10.5 - 0.6, 1.2, 1.2) }
+      break
+    }
+    case 'rack': {
+      // A weapons rack with halberds and spears.
+      blobShadow(ctx, x, y, 0.5, 0.16)
+      box(ctx, x - 0.55, y - 0.1, 0, 1.1, 0.2, 0.08, pal.timberDark)
+      box(ctx, x - 0.55, y - 0.05, 1.05, 1.1, 0.1, 0.07, pal.timberDark)
+      for (let i = 0; i < 4; i++) {
+        const sx = x - 0.4 + i * 0.27
+        const a = iso(sx, y, 0.06), b = iso(sx, y, 1.75 + (i % 2) * 0.12)
+        line(ctx, a, b, '#6b4a2e', 1.6)
+        ctx.fillStyle = '#c9ced6'
+        if (i % 2) { ctx.beginPath(); ctx.moveTo(b.x, b.y - 7); ctx.lineTo(b.x + 2.4, b.y); ctx.lineTo(b.x - 2.4, b.y); ctx.closePath(); ctx.fill() }
+        else { ctx.beginPath(); ctx.moveTo(b.x, b.y - 6); ctx.quadraticCurveTo(b.x + 7, b.y - 2, b.x, b.y + 2); ctx.closePath(); ctx.fill() }
+        ctx.fillStyle = '#c0392b'
+        ctx.fillRect(b.x - 1.5, b.y + 2, 3, 3)
+      }
+      break
+    }
+    case 'screen': {
+      // A small three-panel screen with ink bamboo.
+      const x0 = x - 0.6, W = 1.2 * 32, H = 1.05 * ZH
+      castShadow(ctx, x0, y - 0.05, 1.2, 0.1, 1.1, 0.1)
+      const p = iso(x0, y, 1.12)
+      ctx.save()
+      ctx.translate(p.x, p.y)
+      ctx.transform(1, 0.5, 0, 1, 0, 0)
+      ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.fillRect(2, 2, W, H)
+      ctx.fillStyle = pal.timberDark; ctx.fillRect(-1.5, -1.5, W + 3, H + 3)
+      ctx.fillStyle = pal.paper; ctx.fillRect(0, 0, W, H)
+      ctx.strokeStyle = alpha(pal.ink, 0.65)
+      ctx.lineWidth = 1.4
+      for (let i = 0; i < 3; i++) {
+        const bx = 8 + i * 12 + rnd(seed, i) * 4
+        ctx.beginPath(); ctx.moveTo(bx, H - 3); ctx.lineTo(bx + 1, 6); ctx.stroke()
+        for (let k = 0; k < 3; k++) {
+          ctx.fillStyle = alpha(pal.ink, 0.55)
+          ctx.beginPath(); ctx.ellipse(bx + 4, 10 + k * 9 + i * 2, 4, 1.2, -0.5, 0, Math.PI * 2); ctx.fill()
+        }
+      }
+      ctx.fillStyle = pal.timberDark
+      ctx.fillRect(W / 3 - 1, 0, 2, H); ctx.fillRect((W * 2) / 3 - 1, 0, 2, H)
+      ctx.restore()
+      break
+    }
+    case 'basket': {
+      // A basket of rolled scrolls.
+      blobShadow(ctx, x, y, 0.3, 0.2)
+      cyl(ctx, x, y, 0, 0.22, 0.34, '#b08a52', { top: '#5a4530' })
+      const t = iso(x, y, 0.34)
+      for (let i = 0; i < 6; i++) {
+        const dx = (i - 2.5) * 3.2, h = 10 + rnd(seed, i) * 7
+        line(ctx, { x: t.x + dx, y: t.y }, { x: t.x + dx * 1.3, y: t.y - h }, pal.paper, 3.4)
+        ctx.fillStyle = ['#b3261e', '#2e5394', '#c9952f'][i % 3]!
+        ctx.beginPath(); ctx.arc(t.x + dx * 1.3, t.y - h, 1.8, 0, Math.PI * 2); ctx.fill()
+      }
+      break
+    }
+    case 'censer': {
+      blobShadow(ctx, x, y, 0.3, 0.2)
+      for (const [lx, ly] of [[-0.1, -0.06], [0.1, -0.06], [0, 0.1]] as const) box(ctx, x + lx - 0.02, y + ly - 0.02, 0, 0.04, 0.04, 0.16, '#5c4a32', { lit: false, edge: false })
+      cyl(ctx, x, y, 0.14, 0.18, 0.2, '#8a6d3f', { top: '#3a2e22' })
+      smoke(ctx, iso(x, y, 0.36), now, 2, seed, 'rgba(235,230,225,0.5)', 30)
+      break
+    }
+  }
+}
+
+/** Shared decor along the great hall's walls and by the steps. */
+function hallDecor(w: number, d: number): Array<{ prop: BayProp | 'lantern'; x: number; y: number; seed: number }> {
+  const out: Array<{ prop: BayProp | 'lantern'; x: number; y: number; seed: number }> = []
+  // Down the left wall below the archive, and down the open right side.
+  for (let y = 7.6, k = 0; y < d - 1.2; y += 2.6, k++) out.push({ prop: k % 2 ? 'peony' : 'lantern', x: 0.5, y, seed: k * 11 + 1 })
+  for (let y = 4.4, k = 0; y < d - 1.2; y += 2.6, k++) out.push({ prop: k % 2 ? 'lantern' : 'bonsai', x: w - 0.5, y, seed: k * 17 + 2 })
+  // A pair of censers at the head of the carpet, in front of the throne's steps.
+  out.push({ prop: 'censer', x: w / 2 - 0.62, y: 4.68, seed: 3 }, { prop: 'censer', x: w / 2 + 0.62, y: 4.68, seed: 4 })
+  return out
+}
+
+/** A standing palace lantern on a pole. */
+function drawPoleLantern(ctx: CanvasRenderingContext2D, x: number, y: number, now: number, lights: Light[], seed: number): void {
+  blobShadow(ctx, x, y, 0.25, 0.2)
+  cyl(ctx, x, y, 0, 0.14, 0.08, pal.marble)
+  line(ctx, iso(x, y, 0.08), iso(x, y, 2.0), pal.timberDark, 2.2)
+  line(ctx, iso(x, y, 2.0), iso(x + 0.3, y, 2.05), pal.timberDark, 1.6)
+  const c = iso(x + 0.3, y, 1.72 + Math.sin(now / 1300 + seed) * 0.01)
+  ctx.fillStyle = '#c8322a'
+  ctx.beginPath(); ctx.ellipse(c.x, c.y, 6, 7.5, 0, 0, Math.PI * 2); ctx.fill()
+  ctx.fillStyle = 'rgba(255,214,140,0.5)'
+  ctx.beginPath(); ctx.ellipse(c.x - 1, c.y - 1, 3, 4, 0, 0, Math.PI * 2); ctx.fill()
+  ctx.fillStyle = pal.gold
+  ctx.fillRect(c.x - 3, c.y - 9, 6, 2); ctx.fillRect(c.x - 3, c.y + 7, 6, 2)
+  lights.push({ p: c, rx: 30, ry: 28, color: '#ff9a5a', day: 0.05, night: 0.5 })
+}

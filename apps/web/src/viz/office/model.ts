@@ -8,7 +8,7 @@
  */
 import { agentActivity, type Activity, type AgentState, type FileChange, type ObserverEvent, type SessionState, type ToolCallState, type WorldState } from '@oadt/protocol'
 import { buddySeed } from '../../shared/buddy'
-import type { Pt } from './iso'
+import { hash, rnd, type Pt } from './iso'
 
 export const ROOM_W = 12
 export const ROOM_D = 9
@@ -112,7 +112,10 @@ const BACK_CORRIDOR = 2.1
 const lastSeat = (rows: number) => SEAT0 + (rows - 1) * SEAT_STEP
 export const podDepth = (rows: number) => lastSeat(rows) + 2.7
 
-export interface Stage { w: number; d: number }
+/** The open floor's size, and how many sofas its lounge has. */
+export interface Stage { w: number; d: number; sofas: number }
+/** Sofas line up along the front, this far apart. */
+export const SOFA_STEP = 3.8
 export interface Grid { cols: number; rows: number; rowDepth: number }
 
 /** Two teams side by side, then a 2×2, then three or four across; more rows toward the front. */
@@ -121,8 +124,13 @@ export function podGrid(n: number, deskRows: number): Grid {
   return { cols, rows: Math.max(1, Math.ceil(n / cols)), rowDepth: podDepth(deskRows) + 0.8 }
 }
 
-export function floorSize(g: Grid): Stage {
-  return { w: Math.max(ROOM_W, FLOOR_LEFT + g.cols * POD_W + FLOOR_RIGHT), d: Math.max(ROOM_D, POD_Y0 + g.rows * g.rowDepth + FLOOR_FRONT) }
+/** The floor for this grid of pods; the lounge gets a sofa for every two teams (up to four). */
+export function floorSize(g: Grid, teams: number): Stage {
+  return {
+    w: Math.max(ROOM_W, FLOOR_LEFT + g.cols * POD_W + FLOOR_RIGHT),
+    d: Math.max(ROOM_D, POD_Y0 + g.rows * g.rowDepth + FLOOR_FRONT),
+    sofas: Math.min(4, Math.max(1, Math.ceil(teams / 2))),
+  }
 }
 
 export function podOrigin(slot: number, g: Grid): Pt {
@@ -134,12 +142,12 @@ export function floorFurniture(st: Stage) {
   const rx = st.w - ROOM_W, dy = st.d - ROOM_D
   return {
     entrance: { x: ENTRANCE.x + rx, y: ENTRANCE.y },
-    couch: COUCH_SPOTS.map((p) => ({ x: p.x + rx, y: p.y + dy })),
+    couch: Array.from({ length: st.sofas }, (_, i) => COUCH_SPOTS.map((p) => ({ x: p.x + rx - i * SOFA_STEP, y: p.y + dy }))).flat(),
   }
 }
 
 /** The layout of the pod at (px, py) on an open floor of the given size, for `rows` rows of desks. Pod-local tiles. */
-export function podLayout(px: number, py: number, st: Stage, rows: number): OfficeLayout {
+export function podLayout(px: number, py: number, st: Stage, rows: number, seed = 0): OfficeLayout {
   const aisle = (y: number): Pt => ({ x: POD_AISLE, y })
   const seat = (x: number, y: number, lane: number): Spot => ({ at: { x, y }, via: [aisle(lane), { x, y: lane }, { x, y }] })
   const top = BACK_CORRIDOR - py
@@ -154,9 +162,18 @@ export function podLayout(px: number, py: number, st: Stage, rows: number): Offi
     desks(n) {
       const sub = (x: number, sy: number): Desk => ({ x, y: sy + 0.55, w: 1.6, d: 0.9, boss: false, seat: { x: x + 0.8, y: sy }, via: seat(x + 0.8, sy, sy - 0.45).via })
       const desks: Desk[] = [{ x: 1.8, y: 1.0, w: 2.5, d: 1.1, boss: true, seat: { x: 3.05, y: 0.4 }, via: [aisle(0.4), { x: 3.05, y: 0.4 }] }]
+      // Every team arranges its desks a little differently: straight rows, staggered rows, or a looser scatter.
+      const style = seed % 3
       for (let r = 0; r < n; r++) {
         const sy = SEAT0 + r * SEAT_STEP
-        for (const x of [0.3, 2.35, 4.4]) desks.push(sub(x, sy))
+        ;[0.3, 2.35, 4.4].forEach((x, k) => {
+          const stagger = style === 1 && r % 2 === 1 ? 0.3 : 0
+          const jx = (rnd(seed, r, k) - 0.5) * (style === 2 ? 0.34 : 0.12)
+          const jy = (rnd(seed, r, k + 7) - 0.5) * (style === 2 ? 0.16 : 0.08)
+          const d = sub(x + stagger + jx, sy + jy)
+          d.via = [aisle(sy - 0.45), { x: d.seat.x, y: sy - 0.45 }, d.seat]
+          desks.push(d)
+        })
       }
       return desks
     },
@@ -194,6 +211,9 @@ function viaRoute(c: Char, from: Spot | undefined, to: Spot, layout: OfficeLayou
 function walkTo(c: Char, from: Spot | undefined, to: Spot, layout: OfficeLayout): Pt[] {
   return layout.mono ? viaRoute(c, from, to, layout) : route(c, to.at)
 }
+
+/** What a desk has piled up over the session: finished papers (edits) and crumpled ones (failures). */
+export interface Mess { papers: number; crumples: number }
 
 export type Mode = 'walking' | 'seated' | 'lounging' | 'standing'
 export type Dest = 'desk' | 'couch' | 'stand' | 'door'
@@ -245,6 +265,10 @@ export interface Room {
   bornAt: number
   /** Workers who already went home (only come back if they get work again). */
   gone: Set<string>
+  /** A stable number from the session id: the team's furniture, arrangement and decor. */
+  seed: number
+  /** What each desk has piled up (by desk index). */
+  mess: Mess[]
   layout: OfficeLayout
   /** Rows of desks in the pod (pods grow with the team). */
   rows: number
@@ -289,7 +313,7 @@ export class Office {
 
   /** One open-plan floor for every session (true), or a room per session. */
   mono = false
-  stage: Stage = { w: ROOM_W, d: ROOM_D }
+  stage: Stage = { w: ROOM_W, d: ROOM_D, sofas: 1 }
   /** The open floor's cat. */
   cat: Cat = { x: 5, y: 2, path: [], napUntil: 0, facing: 1, phase: Math.random() * 10 }
   /** The open floor's door, shared by every team. */
@@ -318,7 +342,7 @@ export class Office {
         room = {
           id, ox: 0, oy: 0, harness: s.harness, title: '', desks: [], chars: new Map(),
           doorOpen: 0, doorUntil: 0, cat: { x: 5, y: 5.6, path: [], napUntil: 0, facing: 1, phase: Math.random() * 10 }, initialized: false, gone: new Set(), bornAt: now,
-          layout: CLASSIC, rows: 1, rev: 0, slot: -1,
+          layout: CLASSIC, rows: 1, rev: 0, slot: -1, seed: hash(id), mess: [],
         }
         this.rooms.set(id, room)
       }
@@ -346,13 +370,13 @@ export class Office {
     let maxSlot = 0, rows = 1
     for (const r of this.rooms.values()) { maxSlot = Math.max(maxSlot, this.slots.get(r.id) ?? 0); rows = Math.max(rows, r.rows) }
     const grid = podGrid(maxSlot + 1, rows)
-    this.stage = floorSize(grid)
+    this.stage = floorSize(grid, this.rooms.size)
     for (const r of this.rooms.values()) {
       r.slot = this.slots.get(r.id) ?? 0
       const o = podOrigin(r.slot, grid)
       r.ox = o.x
       r.oy = o.y
-      r.layout = podLayout(o.x, o.y, this.stage, r.rows)
+      r.layout = podLayout(o.x, o.y, this.stage, r.rows, r.seed)
       const want = r.layout.desks(r.rows)
       for (let i = r.desks.length; i < want.length; i++) r.desks.push(want[i]!)
     }
@@ -533,6 +557,12 @@ export class Office {
       case 'tool.finished': {
         const t = s.tools[e.callId]
         if (!c || !t) break
+        // Work leaves traces on the desk: finished papers for edits, crumpled ones for failures.
+        if (c.deskIdx >= 0) {
+          const m = (room.mess[c.deskIdx] ??= { papers: 0, crumples: 0 })
+          if (!e.ok) m.crumples = Math.min(6, m.crumples + 1)
+          else if (t.category === 'edit' || t.category === 'write') m.papers = Math.min(8, m.papers + 1)
+        }
         if (!e.ok) {
           this.effects.push({ kind: 'puff', room: room.id, at: deskTop(c), born: now, dur: 1200, color: '#ff6b81' })
           this.effects.push({ kind: 'popup', room: room.id, at: head(c), born: now, dur: 1400, text: '✗', color: '#ff5d73' })

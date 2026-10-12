@@ -12,7 +12,7 @@
  */
 import { agentActivity, type Activity, type AgentState, type FileChange, type ObserverEvent, type SessionState, type ToolCallState, type WorldState } from '@oadt/protocol'
 import { buddySeed } from '../../shared/buddy'
-import type { Pt } from '../office/iso'
+import { hash, rnd, type Pt } from '../office/iso'
 
 export const HALL_W = 15
 export const HALL_D = 11
@@ -158,7 +158,7 @@ function presentSpots(w: number): Pt[] {
 }
 
 /** The layout of one bay at (bx, by) in a great hall of the given size, for `rows` rows of desks. Bay-local tiles. */
-export function bayLayout(bx: number, by: number, stage: Stage, rows: number): CourtLayout {
+export function bayLayout(bx: number, by: number, stage: Stage, rows: number, seed = 0): CourtLayout {
   const side = (y: number): Pt => ({ x: SIDE, y })
   const seat = (x: number, y: number, lane: number): Seat => ({ at: { x, y }, via: [side(lane), { x, y: lane }, { x, y }] })
   const front = stage.d - 0.55 - by
@@ -172,8 +172,11 @@ export function bayLayout(bx: number, by: number, stage: Stage, rows: number): C
       const desks: Desk[] = [lead]
       for (let r = 0; r < n; r++) {
         const y = ROW0 + r * ROW_STEP, lane = y + 0.88
-        desks.push({ x: 1.25, y: y - 0.42, w: 0.66, d: 0.84, lead: false, facing: 1, seat: seat(0.8, y, lane) })
-        desks.push({ x: 3.6, y: y - 0.42, w: 0.66, d: 0.84, lead: false, facing: -1, seat: seat(4.75, y, lane) })
+        // No two ranks kneel quite in line.
+        const j = (k: number) => (rnd(seed, r, k) - 0.5) * 0.14
+        const wy = y + j(1), ey = y + j(2), wx = j(3), ex = j(4)
+        desks.push({ x: 1.25 + wx, y: wy - 0.42, w: 0.66, d: 0.84, lead: false, facing: 1, seat: seat(0.8 + wx, wy, lane) })
+        desks.push({ x: 3.6 + ex, y: ey - 0.42, w: 0.66, d: 0.84, lead: false, facing: -1, seat: seat(4.75 + ex, ey, lane) })
       }
       return desks
     },
@@ -217,6 +220,9 @@ export function bayOrigin(slot: number, stage: Stage, g: Grid): Pt {
   const row = Math.floor(slot / per), j = slot % per, k = Math.floor(j / 2)
   return { x: j % 2 === 0 ? stage.w / 2 - CARPET_HALF - (k + 1) * BAY_W : stage.w / 2 + CARPET_HALF + k * BAY_W, y: BAY_Y0 + row * g.rowDepth }
 }
+
+/** What a desk has piled up over the session: finished papers (edits) and crumpled ones (failures). */
+export interface Mess { papers: number; crumples: number }
 
 export type Mode = 'walking' | 'kneeling' | 'resting' | 'standing' | 'presenting'
 export type Dest = 'desk' | 'rest' | 'stand' | 'present' | 'door'
@@ -283,6 +289,10 @@ export interface Hall {
   rev: number
   /** Bay slot in the one-hall court (stable while the session is on stage). */
   slot: number
+  /** A stable number from the session id: the delegation's furnishings and decor. */
+  seed: number
+  /** What each desk has piled up (by desk index). */
+  mess: Mess[]
 }
 
 export type Effect =
@@ -354,7 +364,7 @@ export class Court {
         hall = {
           id, nameIdx: this.names.get(id)!, ox: 0, oy: 0, harness: s.harness, title: '', desks: [], ministers: new Map(),
           cat: { x: 4.6, y: 9.6, path: [], napUntil: 0, facing: 1, phase: Math.random() * 10 }, initialized: false, gone: new Set(), bornAt: now,
-          gongAt: 0, drumAt: 0, pigeons: new Map(), layout: CLASSIC, rows: mono ? 1 : ROWS.length, rev: 0, slot: -1,
+          gongAt: 0, drumAt: 0, pigeons: new Map(), layout: CLASSIC, rows: mono ? 1 : ROWS.length, rev: 0, slot: -1, seed: hash(id), mess: [],
         }
         this.halls.set(id, hall)
       }
@@ -387,7 +397,7 @@ export class Court {
       const o = bayOrigin(h.slot, this.stage, grid)
       h.ox = o.x
       h.oy = o.y
-      h.layout = bayLayout(o.x, o.y, this.stage, h.rows)
+      h.layout = bayLayout(o.x, o.y, this.stage, h.rows, h.seed)
       const want = h.layout.desks(h.rows)
       for (let i = h.desks.length; i < want.length; i++) h.desks.push(want[i]!)
     }
@@ -603,6 +613,12 @@ export class Court {
       case 'tool.finished': {
         const t = s.tools[e.callId]
         if (!m || !t) break
+        // Work leaves traces by the desk: finished memorials for edits, crumpled drafts and ink for failures.
+        if (m.deskIdx >= 0) {
+          const ms = (hall.mess[m.deskIdx] ??= { papers: 0, crumples: 0 })
+          if (!e.ok) ms.crumples = Math.min(6, ms.crumples + 1)
+          else if (t.category === 'edit' || t.category === 'write') ms.papers = Math.min(8, ms.papers + 1)
+        }
         if (t.category === 'shell') hall.drumAt = now
         const out = hall.pigeons.get(e.callId)
         if (out) {

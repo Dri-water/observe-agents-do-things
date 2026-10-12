@@ -2,7 +2,7 @@
 import type { Activity, SessionState, ToolCategory, WorldState } from '@oadt/protocol'
 import { CATEGORY, harnessInfo } from '../../shared/theme'
 import { blobArt, blobMotion, drawBlob } from './blob'
-import { activityOf, CABINET, COUCH, COUNTER, DIFF_FLY_MS, DOOR, DOORMAT, FLOOR_LAMP, ROOM_D, ROOM_W, SHELF, SIDE_TABLE, type Cat, type Char, type Desk, type Effect, type Office, type Room } from './model'
+import { activityOf, CABINET, COUCH, COUNTER, DIFF_FLY_MS, DOOR, DOORMAT, FLOOR_LAMP, ROOM_D, ROOM_W, SHELF, SIDE_TABLE, SOFA_STEP, type Cat, type Char, type Desk, type Effect, type Office, type Room } from './model'
 import { clip } from '@oadt/protocol'
 import { LOOKS } from '../../shared/buddy'
 import { alpha, mix, shade } from '../../shared/color'
@@ -74,6 +74,8 @@ let RD = ROOM_D
 /** The door, wall screen, shelf and lounge keep to the right (and the lounge to the front) of a bigger floor. */
 let RX = 0
 let DY = 0
+/** Sofas in the lounge. */
+let SOFAS = 1
 
 interface Frame {
   key: object
@@ -84,6 +86,7 @@ interface Frame {
   cat: Cat
   mono: boolean
   doorOpen: number
+  sofas: number
   ox?: number
   oy?: number
 }
@@ -109,7 +112,7 @@ export function renderOffice(
   const overlays: Array<() => void> = []
   if (office.mono) {
     const bornAt = Math.min(...rooms.map((r) => r.bornAt))
-    drawFrame(ctx, { key: office, w: office.stage.w, d: office.stage.d, pods: rooms, cat: office.cat, mono: true, doorOpen: office.door.open }, world, now, day, rs, overlays, cam, dpr, now - bornAt < 650)
+    drawFrame(ctx, { key: office, w: office.stage.w, d: office.stage.d, pods: rooms, cat: office.cat, mono: true, doorOpen: office.door.open, sofas: office.stage.sofas }, world, now, day, rs, overlays, cam, dpr, now - bornAt < 650)
   } else {
     for (const room of rooms) {
       const o = iso(room.ox, room.oy)
@@ -125,7 +128,7 @@ export function renderOffice(
         ctx.scale(0.86 + 0.14 * k, 0.86 + 0.14 * k)
         ctx.translate(-c.x, -c.y)
       }
-      drawFrame(ctx, { key: room, w: ROOM_W, d: ROOM_D, pods: [room], cat: room.cat, mono: false, doorOpen: room.doorOpen, ox: room.ox, oy: room.oy }, world, now, day, rs, born < 1 ? [] : overlays, cam, dpr, born < 1)
+      drawFrame(ctx, { key: room, w: ROOM_W, d: ROOM_D, pods: [room], cat: room.cat, mono: false, doorOpen: room.doorOpen, sofas: 1, ox: room.ox, oy: room.oy }, world, now, day, rs, born < 1 ? [] : overlays, cam, dpr, born < 1)
       ctx.restore()
     }
   }
@@ -244,6 +247,7 @@ function drawFrame(
   RD = f.d
   RX = f.w - ROOM_W
   DY = f.d - ROOM_D
+  SOFAS = f.sofas
   const fox = f.ox ?? 0, foy = f.oy ?? 0
   const pods = f.pods.map((room) => ({ room, s: world.sessions[room.id]!, hc: harnessInfo(room.harness).color }))
   const first = pods[0]!
@@ -270,7 +274,7 @@ function drawFrame(
   // blitted at device resolution.
   const scale = dpr * cam.zoom
   const bounds = staticBounds(RW, RD)
-  const key = `${RW}x${RD}|${Math.round(scale * 64)}|${Math.round(day * 24)}|${hc}|${f.mono}`
+  const key = `${RW}x${RD}x${SOFAS}|${Math.round(scale * 64)}|${Math.round(day * 24)}|${hc}|${f.mono}`
   if (animating || scale > 3.2) drawStatic(ctx, day, hc, f.mono)
   else {
     let layer = staticLayers.get(f.key)
@@ -299,12 +303,17 @@ function drawFrame(
   const add = (depth: number, draw: () => void) => sprites.push({ depth, draw })
   const addAt = (dx: number, dy: number, depth: number, draw: () => void) => add(depth + dx + dy, () => shifted(ctx, dx, dy, lights, draw))
 
-  addAt(RX, DY, COUCH.x + COUCH.y - 0.5, () => drawCouchBack(ctx))
-  addAt(RX, DY, COUCH.x + COUCH.w + COUCH.y + COUCH.d, () => drawCouchFront(ctx))
+  // The lounge: a sofa for every two teams, with lamps between them and a side table at the end.
+  for (let i = 0; i < SOFAS; i++) {
+    const sx = RX - i * SOFA_STEP
+    addAt(sx, DY, COUCH.x + COUCH.y - 0.5, () => drawCouchBack(ctx))
+    addAt(sx, DY, COUCH.x + COUCH.w + COUCH.y + COUCH.d, () => drawCouchFront(ctx))
+    addAt(sx, DY, FLOOR_LAMP.x + FLOOR_LAMP.y, () => drawFloorLamp(ctx, lights, day))
+  }
   addAt(RX, DY, SIDE_TABLE.x + SIDE_TABLE.y, () => drawSideTable(ctx))
-  addAt(RX, DY, FLOOR_LAMP.x + FLOOR_LAMP.y, () => drawFloorLamp(ctx, lights, day))
   add(CABINET.x + CABINET.y + 0.8, () => drawCabinet(ctx))
   addAt(0, DY, COUNTER.x + COUNTER.y + 1.4, () => drawCounter(ctx, now, lights))
+  if (f.mono) for (const dc of floorDecor(RD, RX - (SOFAS - 1) * SOFA_STEP, DY)) add(dc.x + dc.y, () => drawProp(ctx, dc.prop, dc.x, dc.y, now, dc.seed))
   addAt(RX, 0, SHELF.x + SHELF.y + 0.8, () => drawShelf(ctx))
   PLANTS.forEach(([px, py, sz, kind], i) => { const [dx, dy] = plantShift(i); addAt(dx, dy, px + py, () => drawPlant(ctx, px, py, sz, now, i, kind)) })
   blobShadow(ctx, f.cat.x, f.cat.y, 0.3, 0.3)
@@ -320,21 +329,31 @@ function drawFrame(
     ctx.translate(pt.x, pt.y)
     if (f.mono) {
       const depth = Math.max(...room.desks.map((d) => d.y + d.d)) + 0.5
-      drawRug(ctx, 0.1, -0.25, 6.3, depth + 0.25, pod.hc)
+      // Each team's rug differs a little: woven or plain, its own tint, not quite the same size.
+      const inset = (room.seed % 3) * 0.12
+      drawRug(ctx, 0.1 + inset, -0.25 + inset * 0.5, 6.3 - inset * 1.6, depth + 0.25 - inset, room.seed % 5 === 4 ? '#e9b872' : pod.hc, room.seed % 2 === 1)
     }
     for (const d of room.desks) castShadow(ctx, d.x, d.y, d.w, d.d, 0.75, 0.13)
     for (const d of room.desks) blobShadow(ctx, d.seat.x, d.seat.y + 0.05, 0.42, 0.16)
+    room.desks.forEach((d, i) => { const n = room.mess[i]?.crumples ?? 0; if (n) drawCrumples(ctx, d, n, room.seed + i * 31) })
     for (const c of room.chars.values()) if (c.mode === 'walking' || c.mode === 'standing') blobShadow(ctx, c.x, c.y, 0.4, 0.3 * c.alpha)
     ctx.restore()
 
+    const look = podLook(room.seed, pod.hc, f.mono)
     room.desks.forEach((d, i) => {
       const occupant = d.occupant ? room.chars.get(d.occupant) : undefined
       const agent = occupant ? s.agents[occupant.id] : undefined
       const act = occupant && occupant.mode === 'seated' ? activityOf(s, agent, now) : undefined
-      addAt(px, py, d.seat.x + d.seat.y - 0.3, () => drawChair(ctx, d.seat.x, d.seat.y, pod.hc, d.boss ? 1.35 : 1))
-      addAt(px, py, d.x + d.w / 2 + d.y + d.d / 2, () => drawDesk(ctx, d, act?.activity, now, pod.hc, i, lights, day))
+      addAt(px, py, d.seat.x + d.seat.y - 0.3, () => drawChair(ctx, d.seat.x, d.seat.y, look?.chair ?? pod.hc, d.boss ? 1.35 : 1))
+      addAt(px, py, d.x + d.w / 2 + d.y + d.d / 2, () => drawDesk(ctx, d, act?.activity, now, pod.hc, i, lights, day, look, room.mess[i]?.papers ?? 0))
     })
-    if (f.mono) addAt(px, py, 0.4 - 0.4, () => drawTeamSign(ctx, room, s, pod.hc))
+    if (f.mono) {
+      addAt(px, py, 0.4 - 0.4, () => drawTeamSign(ctx, room, s, pod.hc))
+      podProps(room.seed).forEach((prop, k) => {
+        const [x, y] = POD_PROP_SPOTS[k]!
+        addAt(px, py, x + y, () => drawProp(ctx, prop, x, y, now, room.seed + k))
+      })
+    }
     for (const c of room.chars.values()) {
       const act = activityOf(s, s.agents[c.id], now)
       addAt(px, py, c.x + c.y + (c.mode === 'seated' ? -0.05 : 0.05), () => {
@@ -406,7 +425,8 @@ function drawTeamBanner(ctx: CanvasRenderingContext2D, origin: Pt, room: Room, s
   const p = iso(1.4, -0.15, 2.1)
   ctx.save()
   ctx.translate(origin.x + p.x, origin.y + p.y)
-  ctx.globalAlpha = clamp((0.7 - zoom) / 0.12, 0, 1)
+  // Fade in quickly once the camera is far enough out that the signs can't be read.
+  ctx.globalAlpha = clamp((0.66 - zoom) / 0.04, 0, 1)
   ctx.scale(0.75 / zoom, 0.75 / zoom)
   const title = room.title.length > 30 ? room.title.slice(0, 29) + '…' : room.title
   ctx.font = `700 12px ${FONT}`
@@ -455,7 +475,7 @@ function drawStatic(ctx: CanvasRenderingContext2D, day: number, hc: string, mono
 
   // Floor decals: rugs, light pools, doormat, shadows. Nothing here has height.
   if (!mono) drawRug(ctx, 1.2, 2.55, 9.9, 5.3, hc)
-  drawRug(ctx, 7.35 + RX, 7.1 + DY, 4.55, 1.65, '#9aa3e6', true)
+  drawRug(ctx, 7.35 + RX - (SOFAS - 1) * SOFA_STEP, 7.1 + DY, 4.55 + (SOFAS - 1) * SOFA_STEP, 1.65, '#9aa3e6', true)
   floorQuad(ctx, DOORMAT.x + RX, DOORMAT.y, DOORMAT.w, DOORMAT.d, '#a99274', 0.004, 'rgba(60,40,20,0.25)')
   floorQuad(ctx, DOORMAT.x + RX + 0.1, DOORMAT.y + 0.08, DOORMAT.w - 0.2, DOORMAT.d - 0.16, '#b9a283', 0.005)
   if (day > 0.02) for (const win of windows()) {
@@ -463,7 +483,7 @@ function drawStatic(ctx: CanvasRenderingContext2D, day: number, hc: string, mono
     const g = edgeGrad(ctx, a, b, iso(win.x, 2.6), `rgba(255,246,220,${0.4 * day})`, 'rgba(255,246,220,0)')
     poly(ctx, [a, b, iso(win.x + win.w + 0.75, 2.6), iso(win.x - 0.55, 2.6)], g)
   }
-  shifted(ctx, RX, DY, undefined, () => {
+  for (let i = 0; i < SOFAS; i++) shifted(ctx, RX - i * SOFA_STEP, DY, undefined, () => {
     castShadow(ctx, COUCH.x - 0.3, COUCH.y, COUCH.w + 0.6, COUCH.d, 0.9, 0.2)
     // The sofa's cast shadow is mostly under the sofa; a soft band along its base settles it on the rug.
     const fx0 = COUCH.x - 0.3, fx1 = COUCH.x + COUCH.w + 0.3, fy = COUCH.y + COUCH.d
@@ -471,7 +491,7 @@ function drawStatic(ctx: CanvasRenderingContext2D, day: number, hc: string, mono
     poly(ctx, [a, b, iso(fx1 + 0.1, fy + 0.3), iso(fx0 + 0.1, fy + 0.3)], edgeGrad(ctx, a, b, iso(fx0, fy + 0.3), 'rgba(40,28,64,0.28)', 'rgba(40,28,64,0)'))
     const c = iso(fx1, COUCH.y), d2 = iso(fx1, fy)
     poly(ctx, [c, d2, iso(fx1 + 0.3, fy + 0.1), iso(fx1 + 0.3, COUCH.y + 0.1)], edgeGrad(ctx, c, d2, iso(fx1 + 0.3, COUCH.y), 'rgba(40,28,64,0.22)', 'rgba(40,28,64,0)'))
-    blobShadow(ctx, SIDE_TABLE.x, SIDE_TABLE.y, 0.4, 0.18)
+    if (i === 0) blobShadow(ctx, SIDE_TABLE.x, SIDE_TABLE.y, 0.4, 0.18)
   })
   castShadow(ctx, CABINET.x, CABINET.y, CABINET.w, CABINET.d, CABINET.h, 0.14)
   castShadow(ctx, COUNTER.x, COUNTER.y + DY, COUNTER.w, COUNTER.d, COUNTER.h, 0.14)
@@ -921,10 +941,10 @@ function screenColorFor(activity: Activity | undefined, hc: string): { color: st
   return { color: activity ? activityColor(activity, hc) : '#9fd8ff', active }
 }
 
-function drawDesk(ctx: CanvasRenderingContext2D, desk: Desk, activity: Activity | undefined, now: number, hc: string, idx: number, lights: Light[], day: number): void {
+function drawDesk(ctx: CanvasRenderingContext2D, desk: Desk, activity: Activity | undefined, now: number, hc: string, idx: number, lights: Light[], day: number, look?: PodLook, papers = 0): void {
   const { x, y, w, d, boss } = desk
-  const top = boss ? M.walnut : M.deskTop
-  const legC = boss ? '#c8a165' : M.steel
+  const top = boss ? M.walnut : look?.top ?? M.deskTop
+  const legC = boss ? '#c8a165' : look?.leg ?? M.steel
   // Legs, modesty panel, drawer unit.
   for (const [lx, ly] of [[x + 0.05, y + 0.05], [x + w - 0.11, y + 0.05], [x + 0.05, y + d - 0.11], [x + w - 0.11, y + d - 0.11]]) {
     box(ctx, lx!, ly!, 0, 0.06, 0.06, 0.7, legC, { lit: false, edge: false })
@@ -935,7 +955,7 @@ function drawDesk(ctx: CanvasRenderingContext2D, desk: Desk, activity: Activity 
     for (let i = 1; i < 3; i++) line(ctx, iso(x + w - 0.46, y + d - 0.14, 0.06 + i * 0.19), iso(x + w - 0.08, y + d - 0.14, 0.06 + i * 0.19), 'rgba(0,0,0,0.12)')
   }
   // Top.
-  box(ctx, x, y, 0.7, w, d, 0.07, top, { top: boss ? shade(top, 0.12) : '#f8f3eb' })
+  box(ctx, x, y, 0.7, w, d, 0.07, top, { top: boss ? shade(top, 0.12) : look?.topFace ?? '#f8f3eb' })
   if (boss) {
     // Wood grain.
     ctx.strokeStyle = 'rgba(80,45,20,0.12)'
@@ -968,6 +988,10 @@ function drawDesk(ctx: CanvasRenderingContext2D, desk: Desk, activity: Activity 
       lights.push({ p: iso(mx + 0.43, y - 0.45, Z + 0.6), rx: 30, ry: 26, color: sc, day: screenGlow * 0.25, night: screenGlow * 0.9 })
     }
     drawMug(ctx, x + 2.22, y + 0.72, Z, '#e07a5f')
+    if (papers) {
+      box(ctx, x + 0.12, y + 0.08, Z, 0.34, 0.26, papers * 0.03, '#fbfaf7', { edge: false })
+      for (let k = 1; k < papers; k += 2) line(ctx, iso(x + 0.12, y + 0.34, Z + k * 0.03), iso(x + 0.46, y + 0.34, Z + k * 0.03), 'rgba(90,100,130,0.3)', 0.8)
+    }
     drawMiniPlant(ctx, x + 0.14, y + 0.82, Z, now)
     drawDeskLamp(ctx, x + w - 0.2, y + 0.18, Z, lights, day, '#2f3342')
     // Name plate.
@@ -989,7 +1013,8 @@ function drawDesk(ctx: CanvasRenderingContext2D, desk: Desk, activity: Activity 
     ctx.beginPath(); ctx.arc(logo.x, logo.y, 2.2, 0, Math.PI * 2); ctx.fill()
     lights.push({ p: iso(lx + 0.3, ly - 0.15, Z + 0.15), rx: 40, ry: 24, color: sc, day: screenGlow * 0.35, night: screenGlow * 1.3 + 0.06 })
     // Flavour: papers, mug, sticky note, lamp, sometimes a plant.
-    box(ctx, x + 0.1, y + 0.5, Z, 0.32, 0.26, 0.035 + (idx % 3) * 0.02, '#fbfaf7', { edge: false })
+    // The paper stack grows with every edit made here.
+    box(ctx, x + 0.1, y + 0.5, Z, 0.32, 0.26, 0.035 + (idx % 3) * 0.02 + papers * 0.028, '#fbfaf7', { edge: false })
     line(ctx, iso(x + 0.16, y + 0.58, Z + 0.06), iso(x + 0.34, y + 0.58, Z + 0.06), 'rgba(90,100,130,0.35)')
     line(ctx, iso(x + 0.16, y + 0.66, Z + 0.06), iso(x + 0.3, y + 0.66, Z + 0.06), 'rgba(90,100,130,0.35)')
     drawMug(ctx, x + w - 0.28, y + 0.62, Z, ['#f28482', '#84a59d', '#f6bd60', '#8ecae6'][idx % 4]!)
@@ -1767,4 +1792,141 @@ function drawEffect(ctx: CanvasRenderingContext2D, e: Effect, now: number): void
       break
     }
   }
+}
+
+// ─── A lived-in floor: team looks, decor, and the mess work leaves ───────
+
+/** How a team furnishes its pod (open floor only; the classic room keeps its own look). */
+export interface PodLook { top: string; topFace: string; leg: string; chair: string }
+
+const DESK_FINISHES: Array<[string, string, string]> = [
+  ['#f3ece2', '#f8f3eb', '#3a3e4e'], // white, steel legs
+  ['#e2c59b', '#ead2ac', '#7d5e41'], // light oak
+  ['#b98559', '#c9966a', '#4a3527'], // walnut
+  ['#dfe9e4', '#e9f1ed', '#f4f4f4'], // mint, white legs
+]
+const CHAIR_FABRICS = ['#e07a5f', '#3d405b', '#81b29a', '#f2b56b', '#8d7fd6', '#5aa9c9']
+
+export function podLook(seed: number, hc: string, mono: boolean): PodLook | undefined {
+  if (!mono) return undefined
+  const [top, topFace, leg] = DESK_FINISHES[seed % DESK_FINISHES.length]!
+  const chair = seed % 5 === 0 ? hc : CHAIR_FABRICS[(seed >>> 3) % CHAIR_FABRICS.length]!
+  return { top, topFace, leg, chair }
+}
+
+/** Crumpled paper balls around a desk where things went wrong. */
+function drawCrumples(ctx: CanvasRenderingContext2D, d: Desk, n: number, seed: number): void {
+  for (let i = 0; i < n; i++) {
+    const a = rnd(seed, i, 3) * Math.PI * 2, r = 0.35 + rnd(seed, i, 4) * 0.35
+    const p = iso(d.seat.x + Math.cos(a) * r * 1.1, d.seat.y + 0.15 + Math.abs(Math.sin(a)) * r, 0)
+    ctx.fillStyle = 'rgba(40,28,64,0.18)'
+    ctx.beginPath(); ctx.ellipse(p.x + 1, p.y + 1, 3.6, 1.8, 0, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#fbfaf5'
+    ctx.beginPath(); ctx.arc(p.x, p.y - 2.2, 3, 0, Math.PI * 2); ctx.fill()
+    ctx.strokeStyle = 'rgba(90,90,110,0.55)'
+    ctx.lineWidth = 0.7
+    ctx.beginPath(); ctx.moveTo(p.x - 2, p.y - 3); ctx.lineTo(p.x + 0.5, p.y - 1.6); ctx.lineTo(p.x + 1.8, p.y - 3.4); ctx.stroke()
+  }
+}
+
+/** The pieces of decor a team can have. */
+type PodProp = 'plant' | 'tall-plant' | 'beanbags' | 'low-shelf' | 'board' | 'printer' | 'cooler'
+
+/** Two spots in every pod that stay clear of desks and walkways: left of the lead's desk, and right of it. */
+export const POD_PROP_SPOTS: Array<[number, number]> = [[0.95, 1.55], [5.45, 1.5]]
+
+export function podProps(seed: number): PodProp[] {
+  const a: PodProp[] = ['tall-plant', 'low-shelf', 'board', 'plant', 'printer']
+  const b: PodProp[] = ['beanbags', 'plant', 'cooler', 'tall-plant', 'low-shelf']
+  return [a[seed % a.length]!, b[(seed >>> 4) % b.length]!]
+}
+
+export function drawProp(ctx: CanvasRenderingContext2D, prop: PodProp, x: number, y: number, now: number, seed: number): void {
+  switch (prop) {
+    case 'plant': drawPlant(ctx, x, y, 0.85, now, seed, seed % 3); break
+    case 'tall-plant': drawPlant(ctx, x, y, 1.15, now, seed, (seed + 1) % 3); break
+    case 'beanbags': {
+      for (const [dx, dy, c] of [[-0.35, 0, '#ff9f80'], [0.3, 0.25, '#7cc6fe']] as const) {
+        const p = iso(x + dx, y + dy, 0)
+        blobShadow(ctx, x + dx, y + dy, 0.38, 0.22)
+        const g = ctx.createRadialGradient(p.x - 4, p.y - 12, 2, p.x, p.y - 7, 15)
+        g.addColorStop(0, shade(c, 0.25)); g.addColorStop(1, shade(c, -0.15))
+        ctx.fillStyle = g
+        ctx.beginPath(); ctx.ellipse(p.x, p.y - 6, 13, 9, 0, 0, Math.PI * 2); ctx.fill()
+        ctx.fillStyle = shade(c, -0.22)
+        ctx.beginPath(); ctx.ellipse(p.x + 1, p.y - 9, 7, 3.4, 0, 0, Math.PI * 2); ctx.fill()
+      }
+      break
+    }
+    case 'low-shelf': {
+      const w = 1.2, d = 0.4, h = 0.8
+      castShadow(ctx, x - w / 2, y - d / 2, w, d, h, 0.12)
+      box(ctx, x - w / 2, y - d / 2, 0, w, d, h, '#d7b48a', { top: '#e3c39b' })
+      const colors = ['#ff8a4c', '#5aa9ff', '#ffd166', '#3ee0c5', '#9d8cff', '#ff7aa8']
+      for (let row = 0; row < 2; row++) {
+        let bx = x - w / 2 + 0.08
+        let i = row * 3 + seed
+        while (bx < x + w / 2 - 0.15) {
+          const bw = 0.08 + rnd(i, row, seed) * 0.06
+          box(ctx, bx, y + d / 2 - 0.02, 0.06 + row * 0.38, bw, 0.02, 0.26 + rnd(i, 4) * 0.06, colors[i % colors.length]!, { lit: false, edge: false })
+          bx += bw + 0.02
+          i++
+        }
+      }
+      drawMug(ctx, x + 0.3, y, h, '#f6bd60')
+      break
+    }
+    case 'board': {
+      // A whiteboard on wheels, scribbled on.
+      for (const lx of [x - 0.55, x + 0.55]) {
+        box(ctx, lx - 0.03, y - 0.03, 0, 0.06, 0.06, 1.55, '#9aa0ad', { lit: false, edge: false })
+        cyl(ctx, lx, y + 0.12, 0, 0.05, 0.05, '#3a3e4e')
+      }
+      const p = iso(x - 0.62, y, 1.6)
+      ctx.save()
+      ctx.translate(p.x, p.y)
+      ctx.transform(1, 0.5, 0, 1, 0, 0)
+      const W = 1.24 * 32, H = 0.8 * ZH
+      ctx.fillStyle = 'rgba(0,0,0,0.12)'; ctx.fillRect(1.5, 2, W, H)
+      ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H)
+      ctx.strokeStyle = '#c8cfdc'; ctx.lineWidth = 1.6; ctx.strokeRect(0, 0, W, H)
+      ctx.strokeStyle = ['#5aa9ff', '#ff6f91', '#2fbf71'][seed % 3]!
+      ctx.lineWidth = 1.2
+      ctx.beginPath(); ctx.moveTo(5, H - 6)
+      for (let i = 1; i < 7; i++) ctx.lineTo(5 + i * 5, H - 6 - rnd(seed, i) * (H - 14))
+      ctx.stroke()
+      ctx.strokeRect(W - 14, 5, 9, 7)
+      ctx.restore()
+      break
+    }
+    case 'printer': {
+      castShadow(ctx, x - 0.35, y - 0.25, 0.7, 0.5, 0.7, 0.12)
+      box(ctx, x - 0.35, y - 0.25, 0, 0.7, 0.5, 0.45, '#e4e1db', { top: '#eeebe5' })
+      box(ctx, x - 0.3, y - 0.22, 0.45, 0.6, 0.44, 0.22, '#5b5f70', { top: '#6b7082' })
+      box(ctx, x - 0.18, y - 0.05, 0.67, 0.36, 0.2, 0.03, '#ffffff', { edge: false })
+      const led = iso(x + 0.3, y + 0.22, 0.6)
+      ctx.fillStyle = '#4fe39b'; ctx.fillRect(led.x - 1, led.y - 1, 2, 2)
+      break
+    }
+    case 'cooler': {
+      castShadow(ctx, x - 0.22, y - 0.22, 0.44, 0.44, 1.2, 0.12)
+      box(ctx, x - 0.22, y - 0.22, 0, 0.44, 0.44, 0.85, '#eef0f3', { top: '#f6f7f9' })
+      const g = 0.5 + 0.5 * Math.sin(now / 900 + seed)
+      cyl(ctx, x, y, 0.85, 0.18, 0.42, `rgb(${150 + g * 20},${205 + g * 10},255)`, { top: '#d6efff' })
+      box(ctx, x + 0.2, y - 0.08, 0.5, 0.04, 0.16, 0.08, '#5aa9ff', { edge: false })
+      break
+    }
+  }
+}
+
+/** Shared decor that fills the open floor's spare corners. */
+export function floorDecor(d: number, rx: number, dy: number): Array<{ prop: PodProp; x: number; y: number; seed: number }> {
+  const out: Array<{ prop: PodProp; x: number; y: number; seed: number }> = []
+  // Along the front, left of the lounge.
+  const kinds: PodProp[] = ['tall-plant', 'beanbags', 'plant', 'cooler', 'tall-plant', 'printer', 'plant']
+  let i = 0
+  for (let x = 1.4; x < rx + 7.0; x += 2.9, i++) out.push({ prop: kinds[i % kinds.length]!, x, y: d - 0.75, seed: i * 7 + 3 })
+  // Along the left wall, between the filing cabinet and the coffee counter.
+  for (let y = 6.4, k = 0; y < 5.6 + dy; y += 2.6, k++) out.push({ prop: k % 2 ? 'printer' : 'tall-plant', x: 0.45, y, seed: k * 13 + 5 })
+  return out
 }
