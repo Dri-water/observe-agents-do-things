@@ -39,5 +39,25 @@ exports.run = async function run() {
   await vscode.commands.executeCommand('observeAgents.showSidebar')
   await vscode.commands.executeCommand('observeAgents.showPanel')
   console.log('vscode extension: observer started, dashboard tab open')
+
+  // An older observer appearing on the configured address must not take over: its dashboard is out of date.
+  const http = require('node:http')
+  let streamed = 0
+  const old = http.createServer((req, res) => {
+    if (req.url.startsWith('/api/stream')) streamed++
+    res.setHeader('content-type', 'application/json')
+    res.end(JSON.stringify({ protocol: 1, version: '0.0.1', seq: 0, sources: [] }))
+  })
+  await new Promise((r) => old.listen(4599, '127.0.0.1', r))
+  try {
+    // Longer than the extension's recheck interval, so it has looked at least once.
+    await new Promise((r) => setTimeout(r, 12_500))
+    assert.equal(streamed, 0, 'it does not connect to an observer older than itself')
+    const still = JSON.parse(fs.readFileSync(path.join(os.tmpdir(), 'oadt-vscode-observer.json'), 'utf8')).url
+    assert.equal(still, url, 'it keeps its own up-to-date observer')
+    console.log('vscode extension: skips an older observer on the configured address')
+  } finally {
+    old.close()
+  }
   if (process.env.OADT_HOLD_MS) await new Promise((r) => setTimeout(r, Number(process.env.OADT_HOLD_MS)))
 }

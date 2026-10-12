@@ -8,6 +8,11 @@
  * a free port, never on the configured address, so the CLI or Docker can
  * always start later; it switches back to them as soon as they answer. Windows
  * share the observer VS Code started through a small file in the temp folder.
+ *
+ * The dashboard is served by whichever observer it uses, so an observer older
+ * than the extension would show an out-of-date dashboard. Such an observer is
+ * skipped in favour of the built-in one (with a note saying how to update it),
+ * unless the person chooses to keep using it.
  */
 import * as vscode from 'vscode'
 import { readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -45,6 +50,10 @@ const views = new Set<vscode.Webview>()
 let statusItem: vscode.StatusBarItem
 let context: vscode.ExtensionContext
 const notified = new Set<string>()
+/** Older observers we already told the person about this session (url@version). */
+const warnedOlder = new Set<string>()
+/** Older observers the person chose to keep using anyway (url@version), remembered across sessions. */
+const ALLOW_OLDER_KEY = 'allowOlderObserver'
 
 export function activate(ctx: vscode.ExtensionContext): void {
   context = ctx
@@ -94,14 +103,20 @@ async function start(): Promise<Backend> {
   let url = configuredUrl
   let configured = true
   let close: (() => Promise<void>) | undefined
-  if (!(await isObserver(url, token))) {
-    const target = new URL(configuredUrl)
-    if (!['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname)) {
+  const local = ['127.0.0.1', 'localhost', '[::1]'].includes(new URL(configuredUrl).hostname)
+  const found = await probe(url, token)
+  // An observer elsewhere is the only one there is: use it even if it's older, but say so.
+  if (found && !local && isOlder(found.version)) warnOlder(configuredUrl, found.version, false)
+  if (!found || (local && !usable(configuredUrl, found))) {
+    if (!local) {
       throw new Error(`No observer answers at ${configuredUrl}. Start one there, or point observeAgents.serverUrl at 127.0.0.1 to run it inside VS Code.`)
     }
+    if (found) warnOlder(configuredUrl, found.version, true)
     configured = false
     const shared = readShared()
-    if (shared && (await isObserver(shared))) {
+    const sharedInfo = shared ? await probe(shared) : undefined
+    // Another window's observer is shared only when it is at least as new as this extension.
+    if (shared && sharedInfo && !isOlder(sharedInfo.version)) {
       url = shared
     } else {
       const embedded = await startEmbedded()
@@ -127,7 +142,9 @@ async function recheck(): Promise<void> {
   const b = backend
   if (!b || b.configured || starting) return
   const configuredUrl = setting<string>('serverUrl').replace(/\/+$/, '')
-  if (await isObserver(configuredUrl, setting<string>('token') || undefined)) await restart()
+  const found = await probe(configuredUrl, setting<string>('token') || undefined)
+  // Only switch to one that serves an up-to-date dashboard (or that the person chose to keep).
+  if (found && usable(configuredUrl, found)) await restart()
 }
 
 function readShared(): string | undefined {
@@ -139,17 +156,60 @@ function readShared(): string | undefined {
   }
 }
 
-async function isObserver(url: string, token?: string): Promise<boolean> {
+interface ObserverInfo { protocol: number; version?: string }
+
+/** The observer answering at `url`, if any. */
+async function probe(url: string, token?: string): Promise<ObserverInfo | undefined> {
   try {
     const res = await fetch(`${url}/api/info`, {
       headers: token ? { authorization: `Bearer ${token}` } : {},
       signal: AbortSignal.timeout(800),
     })
-    const info = (await res.json()) as { protocol?: number }
-    return res.ok && info.protocol === 1
+    const info = (await res.json()) as { protocol?: number; version?: string }
+    return res.ok && info.protocol === 1 ? { protocol: 1, version: typeof info.version === 'string' ? info.version : undefined } : undefined
   } catch {
-    return false
+    return undefined
   }
+}
+
+/** This extension's version: the dashboard it ships, and the one its built-in observer serves. */
+function ownVersion(): string {
+  return String(context.extension.packageJSON.version ?? '0.0.0')
+}
+
+/** Whether an observer's version is older than this extension (an observer that doesn't say counts as older). */
+function isOlder(version: string | undefined, than = ownVersion()): boolean {
+  if (!version) return true
+  const parse = (v: string) => v.split('-')[0]!.split('.').map((n) => Number.parseInt(n, 10) || 0)
+  const a = parse(version), b = parse(than)
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] ?? 0) !== (b[i] ?? 0)) return (a[i] ?? 0) < (b[i] ?? 0)
+  }
+  return false
+}
+
+/** Use an observer if it is up to date, or if the person chose to keep this older one. */
+function usable(url: string, info: ObserverInfo): boolean {
+  if (!isOlder(info.version)) return true
+  return context.globalState.get<string[]>(ALLOW_OLDER_KEY, []).includes(`${url}@${info.version ?? '?'}`)
+}
+
+/** Tell the person, once per observer version, that their observer is older than the extension. */
+function warnOlder(url: string, version: string | undefined, skipped: boolean): void {
+  const key = `${url}@${version ?? '?'}`
+  if (warnedOlder.has(key)) return
+  warnedOlder.add(key)
+  const theirs = version ? `version ${version}` : 'an older version'
+  const message = skipped
+    ? `Observe Agents: the observer at ${url} is ${theirs}, older than this extension (${ownVersion()}), so its dashboard is out of date. Using the built-in observer instead. Update the CLI or rebuild the Docker image to share it again.`
+    : `Observe Agents: the observer at ${url} is ${theirs}, older than this extension (${ownVersion()}), so its dashboard may be missing recent changes. Update it to see them.`
+  const keep = 'Use it anyway'
+  void vscode.window.showInformationMessage(message, ...(skipped ? [keep] : [])).then(async (choice) => {
+    if (choice !== keep) return
+    const allowed = context.globalState.get<string[]>(ALLOW_OLDER_KEY, [])
+    await context.globalState.update(ALLOW_OLDER_KEY, [...allowed.filter((k) => !k.startsWith(`${url}@`)), key])
+    await restart()
+  })
 }
 
 /** An observer inside VS Code on a free port, announced to the other windows. */

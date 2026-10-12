@@ -22,6 +22,8 @@ Click the **Agents** icon in the activity bar or the **Agents** tab in the botto
 
 The extension looks for an observer at `observeAgents.serverUrl` (default `http://127.0.0.1:4545`), from the `oadt` CLI or the Docker container. If none answers, VS Code runs its own on a free port, shared by all your windows, and switches back to the CLI or Docker one as soon as it starts. It never takes that address itself, so they can always start.
 
+The dashboard comes from whichever observer the extension uses, so an observer older than the extension would show an out-of-date dashboard. The extension skips such an observer (and an older one shared by another window) and runs its own instead, with a note saying so; update the CLI or rebuild the Docker image to share it again, or choose **Use it anyway**.
+
 | Setting | Default | |
 |---|---|---|
 | `observeAgents.statusBar` | `true` | Show what needs you and how many agents are working. |
