@@ -2,7 +2,7 @@
 import type { Activity, SessionState, ToolCategory, WorldState } from '@oadt/protocol'
 import { CATEGORY, harnessInfo } from '../../shared/theme'
 import { blobArt, blobMotion, drawBlob } from './blob'
-import { activityOf, CABINET, COUCH, COUNTER, DIFF_FLY_MS, DOOR, DOORMAT, FLOOR_LAMP, ROOM_D, ROOM_W, SHELF, SIDE_TABLE, WINDOWS, type Char, type Desk, type Effect, type Office, type Room } from './model'
+import { activityOf, CABINET, COUCH, COUNTER, DIFF_FLY_MS, DOOR, DOORMAT, FLOOR_LAMP, ROOM_D, ROOM_W, SHELF, SIDE_TABLE, type Cat, type Char, type Desk, type Effect, type Office, type Room } from './model'
 import { clip } from '@oadt/protocol'
 import { LOOKS } from '../../shared/buddy'
 import { alpha, mix, shade } from '../../shared/color'
@@ -68,6 +68,26 @@ export function seatZ(mode: Char['mode']): number {
   return mode === 'seated' ? 0.46 : mode === 'lounging' ? SEAT_Z : 0
 }
 
+/** Size of the room being drawn (a classic room, or the open-plan floor). */
+let RW = ROOM_W
+let RD = ROOM_D
+/** The door, wall screen, shelf and lounge keep to the right (and the lounge to the front) of a bigger floor. */
+let RX = 0
+let DY = 0
+
+interface Frame {
+  key: object
+  w: number
+  d: number
+  /** The teams in this room: one in a classic room, every pod on the open floor. */
+  pods: Room[]
+  cat: Cat
+  mono: boolean
+  doorOpen: number
+  ox?: number
+  oy?: number
+}
+
 export function renderOffice(
   ctx: CanvasRenderingContext2D,
   office: Office,
@@ -85,26 +105,29 @@ export function renderOffice(
 
   const sc = dpr * cam.zoom
   ctx.setTransform(sc, 0, 0, sc, Math.round(dpr * (w / 2 - cam.x * cam.zoom)), Math.round(dpr * (h / 2 - cam.y * cam.zoom)))
-  const rooms = [...office.rooms.values()].sort((a, b) => a.ox + a.oy - (b.ox + b.oy))
+  const rooms = [...office.rooms.values()].filter((r) => world.sessions[r.id]).sort((a, b) => a.ox + a.oy - (b.ox + b.oy))
   const overlays: Array<() => void> = []
-  for (const room of rooms) {
-    const s = world.sessions[room.id]
-    if (!s) continue
-    const o = iso(room.ox, room.oy)
-    const born = clamp((now - room.bornAt) / 650, 0, 1)
-    ctx.save()
-    ctx.translate(o.x, o.y)
-    if (born < 1) {
-      // Pop in: rise, scale up and fade.
-      const k = easeOut(born)
-      const c = iso(ROOM_W / 2, ROOM_D / 2, 1)
-      ctx.globalAlpha = k
-      ctx.translate(c.x, c.y + (1 - k) * 40)
-      ctx.scale(0.86 + 0.14 * k, 0.86 + 0.14 * k)
-      ctx.translate(-c.x, -c.y)
+  if (office.mono) {
+    const bornAt = Math.min(...rooms.map((r) => r.bornAt))
+    drawFrame(ctx, { key: office, w: office.stage.w, d: office.stage.d, pods: rooms, cat: office.cat, mono: true, doorOpen: office.door.open }, world, now, day, rs, overlays, cam, dpr, now - bornAt < 650)
+  } else {
+    for (const room of rooms) {
+      const o = iso(room.ox, room.oy)
+      const born = clamp((now - room.bornAt) / 650, 0, 1)
+      ctx.save()
+      ctx.translate(o.x, o.y)
+      if (born < 1) {
+        // Pop in: rise, scale up and fade.
+        const k = easeOut(born)
+        const c = iso(ROOM_W / 2, ROOM_D / 2, 1)
+        ctx.globalAlpha = k
+        ctx.translate(c.x, c.y + (1 - k) * 40)
+        ctx.scale(0.86 + 0.14 * k, 0.86 + 0.14 * k)
+        ctx.translate(-c.x, -c.y)
+      }
+      drawFrame(ctx, { key: room, w: ROOM_W, d: ROOM_D, pods: [room], cat: room.cat, mono: false, doorOpen: room.doorOpen, ox: room.ox, oy: room.oy }, world, now, day, rs, born < 1 ? [] : overlays, cam, dpr, born < 1)
+      ctx.restore()
     }
-    drawRoom(ctx, room, s, now, day, rs, born < 1 ? [] : overlays, o, cam, dpr, born < 1)
-    ctx.restore()
   }
   // Labels and bubbles on top of everything.
   for (const f of overlays) f()
@@ -177,24 +200,64 @@ function drawBackdrop(ctx: CanvasRenderingContext2D, w: number, h: number, now: 
 
 // ─── Room ────────────────────────────────────────────────────────────────
 
-/** Room-local screen bounds of everything the static layer draws. */
-const STATIC_BOUNDS = { minX: -308, minY: -114, maxX: 404, maxY: 354 }
 const SX = -0.3, SY = -0.3
 interface StaticLayer { key: string; canvas: HTMLCanvasElement }
-const staticLayers = new WeakMap<Room, StaticLayer>()
+const staticLayers = new WeakMap<object, StaticLayer>()
 
-function drawRoom(ctx: CanvasRenderingContext2D, room: Room, s: SessionState, now: number, day: number, rs: RenderState, overlays: Array<() => void>, origin: Pt, cam: Camera, dpr: number, animating: boolean): void {
-  const hc = harnessInfo(room.harness).color
-  const live = s.status === 'working' || s.status === 'waiting'
+/** Room-local screen bounds of everything the static layer draws. */
+function staticBounds(w: number, d: number) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const x of [SX - 0.2, w + 0.3]) for (const y of [SY - 0.2, d + 0.3]) for (const z of [-0.5, WALL_H + 0.3]) {
+    const p = iso(x, y, z)
+    minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x); minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y)
+  }
+  return { minX: Math.floor(minX) - 4, minY: Math.floor(minY) - 4, maxX: Math.ceil(maxX) + 4, maxY: Math.ceil(maxY) + 4 }
+}
+
+/** Windows along the back wall, left of the shelf. */
+function windows(): Array<{ x: number; w: number }> {
+  const out: Array<{ x: number; w: number }> = []
+  for (let x = 1.0; x + 1.9 <= RX + 5.8; x += 2.4) out.push({ x, w: 1.9 })
+  return out
+}
+
+/** Draw something placed in classic-room tiles, shifted by (dx, dy) on a bigger floor; lights it adds move with it. */
+function shifted(ctx: CanvasRenderingContext2D, dx: number, dy: number, lights: Light[] | undefined, draw: () => void): void {
+  const o = iso(dx, dy)
+  const n = lights?.length ?? 0
+  ctx.save()
+  ctx.translate(o.x, o.y)
+  draw()
+  ctx.restore()
+  if (lights) for (let i = n; i < lights.length; i++) lights[i]!.p = { x: lights[i]!.p.x + o.x, y: lights[i]!.p.y + o.y }
+}
+
+const PLANTS: Array<[number, number, number, number]> = [[0.55, 0.6, 1.1, 0], [8.25, 0.45, 0.8, 1], [7.55, 8.05, 0.9, 2], [3.2, 0.5, 0.55, 1]]
+/** Plant offsets: the ones by the door follow the door, the one by the lounge follows the lounge. */
+const plantShift = (i: number): [number, number] => (i === 1 ? [RX, 0] : i === 2 ? [RX, DY] : [0, 0])
+
+function drawFrame(
+  ctx: CanvasRenderingContext2D, f: Frame, world: WorldState, now: number, day: number, rs: RenderState,
+  overlays: Array<() => void>, cam: Camera, dpr: number, animating: boolean,
+): void {
+  RW = f.w
+  RD = f.d
+  RX = f.w - ROOM_W
+  DY = f.d - ROOM_D
+  const fox = f.ox ?? 0, foy = f.oy ?? 0
+  const pods = f.pods.map((room) => ({ room, s: world.sessions[room.id]!, hc: harnessInfo(room.harness).color }))
+  const first = pods[0]!
+  const hc = f.mono ? '#9d8cff' : first.hc
+  const live = pods.some((p) => p.s.status === 'working' || p.s.status === 'waiting')
   const lights: Light[] = []
 
   // Ground shadow under the diorama.
   {
-    const c = iso(ROOM_W / 2 + 0.6, ROOM_D / 2 + 0.6, -0.35)
+    const c = iso(RW / 2 + 0.6, RD / 2 + 0.6, -0.35)
     ctx.save()
     ctx.translate(c.x, c.y + 14)
     ctx.scale(1, 0.5)
-    const r = (ROOM_W + ROOM_D) * TW * 0.33
+    const r = (RW + RD) * TW * 0.33
     const g = ctx.createRadialGradient(0, 0, r * 0.2, 0, 0, r)
     g.addColorStop(0, `rgba(25,18,50,${0.28 - day * 0.08})`)
     g.addColorStop(1, 'rgba(25,18,50,0)')
@@ -203,93 +266,173 @@ function drawRoom(ctx: CanvasRenderingContext2D, room: Room, s: SessionState, no
     ctx.restore()
   }
   // The shell (slab, floor, walls, rugs, furniture shadows) only changes with
-  // zoom and daylight, so it is rendered once into an offscreen canvas and
+  // size, zoom and daylight, so it is rendered once into an offscreen canvas and
   // blitted at device resolution.
   const scale = dpr * cam.zoom
-  const key = `${Math.round(scale * 64)}|${Math.round(day * 24)}|${hc}`
-  if (animating || scale > 3.2) drawStatic(ctx, room, day, hc)
+  const bounds = staticBounds(RW, RD)
+  const key = `${RW}x${RD}|${Math.round(scale * 64)}|${Math.round(day * 24)}|${hc}|${f.mono}`
+  if (animating || scale > 3.2) drawStatic(ctx, day, hc, f.mono)
   else {
-    let layer = staticLayers.get(room)
+    let layer = staticLayers.get(f.key)
     if (!layer || layer.key !== key) {
       const canvas = layer?.canvas ?? document.createElement('canvas')
-      canvas.width = Math.ceil((STATIC_BOUNDS.maxX - STATIC_BOUNDS.minX) * scale)
-      canvas.height = Math.ceil((STATIC_BOUNDS.maxY - STATIC_BOUNDS.minY) * scale)
+      canvas.width = Math.ceil((bounds.maxX - bounds.minX) * scale)
+      canvas.height = Math.ceil((bounds.maxY - bounds.minY) * scale)
       const c2 = canvas.getContext('2d')!
-      c2.setTransform(scale, 0, 0, scale, -STATIC_BOUNDS.minX * scale, -STATIC_BOUNDS.minY * scale)
-      drawStatic(c2, room, day, hc)
+      c2.setTransform(scale, 0, 0, scale, -bounds.minX * scale, -bounds.minY * scale)
+      drawStatic(c2, day, hc, f.mono)
       layer = { key, canvas }
-      staticLayers.set(room, layer)
+      staticLayers.set(f.key, layer)
     }
     const m = ctx.getTransform()
     ctx.save()
     ctx.setTransform(1, 0, 0, 1, 0, 0)
-    ctx.drawImage(layer.canvas, Math.round(m.e + STATIC_BOUNDS.minX * scale), Math.round(m.f + STATIC_BOUNDS.minY * scale))
+    ctx.drawImage(layer.canvas, Math.round(m.e + bounds.minX * scale), Math.round(m.f + bounds.minY * scale))
     ctx.restore()
   }
-  drawWallsLive(ctx, room, s, now, day, hc)
-  for (const c of room.chars.values()) if (c.mode === 'walking' || c.mode === 'standing') blobShadow(ctx, c.x, c.y, 0.4, 0.3 * c.alpha)
-  blobShadow(ctx, room.cat.x, room.cat.y, 0.3, 0.3)
+  const plan = pods.map((p) => p.room.plan).find(Boolean)
+  const status = pods.some((p) => p.s.status === 'waiting') ? 'waiting' : live ? 'working' : 'idle'
+  drawWallsLive(ctx, { title: f.mono ? `${pods.length} teams` : first.room.title, status, plan, doorOpen: f.doorOpen, sessions: pods.map((p) => p.s) }, now, day, hc)
 
-  // Depth-sorted furniture, people and the cat.
+  // One depth-sorted list for the whole room, so loungers from any team sort between the couch's back and front.
   const sprites: Sprite[] = []
   const add = (depth: number, draw: () => void) => sprites.push({ depth, draw })
+  const addAt = (dx: number, dy: number, depth: number, draw: () => void) => add(depth + dx + dy, () => shifted(ctx, dx, dy, lights, draw))
 
-  room.desks.forEach((d, i) => {
-    const occupant = d.occupant ? room.chars.get(d.occupant) : undefined
-    const agent = occupant ? s.agents[occupant.id] : undefined
-    const act = occupant && occupant.mode === 'seated' ? activityOf(s, agent, now) : undefined
-    add(d.seat.x + d.seat.y - 0.3, () => drawChair(ctx, d.seat.x, d.seat.y, hc, d.boss ? 1.35 : 1))
-    add(d.x + d.w / 2 + d.y + d.d / 2, () => drawDesk(ctx, d, act?.activity, now, hc, i, lights, day))
-  })
-  add(COUCH.x + COUCH.y - 0.5, () => drawCouchBack(ctx))
-  add(COUCH.x + COUCH.w + COUCH.y + COUCH.d, () => drawCouchFront(ctx))
-  add(SIDE_TABLE.x + SIDE_TABLE.y, () => drawSideTable(ctx))
-  add(FLOOR_LAMP.x + FLOOR_LAMP.y, () => drawFloorLamp(ctx, lights, day))
+  addAt(RX, DY, COUCH.x + COUCH.y - 0.5, () => drawCouchBack(ctx))
+  addAt(RX, DY, COUCH.x + COUCH.w + COUCH.y + COUCH.d, () => drawCouchFront(ctx))
+  addAt(RX, DY, SIDE_TABLE.x + SIDE_TABLE.y, () => drawSideTable(ctx))
+  addAt(RX, DY, FLOOR_LAMP.x + FLOOR_LAMP.y, () => drawFloorLamp(ctx, lights, day))
   add(CABINET.x + CABINET.y + 0.8, () => drawCabinet(ctx))
-  add(COUNTER.x + COUNTER.y + 1.4, () => drawCounter(ctx, now, lights))
-  add(SHELF.x + SHELF.y + 0.8, () => drawShelf(ctx))
-  PLANTS.forEach(([px, py, sz, kind], i) => add(px + py, () => drawPlant(ctx, px, py, sz, now, i, kind)))
-  add(room.cat.x + room.cat.y, () => drawCat(ctx, room, now))
+  addAt(0, DY, COUNTER.x + COUNTER.y + 1.4, () => drawCounter(ctx, now, lights))
+  addAt(RX, 0, SHELF.x + SHELF.y + 0.8, () => drawShelf(ctx))
+  PLANTS.forEach(([px, py, sz, kind], i) => { const [dx, dy] = plantShift(i); addAt(dx, dy, px + py, () => drawPlant(ctx, px, py, sz, now, i, kind)) })
+  blobShadow(ctx, f.cat.x, f.cat.y, 0.3, 0.3)
+  add(f.cat.x + f.cat.y, () => drawCat(ctx, f.cat, now))
 
-  for (const c of room.chars.values()) {
-    const agent = s.agents[c.id]
-    const act = activityOf(s, agent, now)
-    add(c.x + c.y + (c.mode === 'seated' ? -0.05 : 0.05), () => {
-      const pos = drawWorker(ctx, c, act.activity, now, rs.hovered === c.id || rs.selected === c.id, day)
-      heads.set(`${room.id}/${c.id}`, pos.head)
-      overlays.push(() => drawOverlay(ctx, origin, pos, c, act, now, rs, cam))
+  for (const pod of pods) {
+    const { room, s } = pod
+    const px = room.ox - fox, py = room.oy - foy
+    const origin = iso(room.ox, room.oy)
+    const pt = iso(px, py)
+    // Floor decals for the team: its rug (on the open floor), desk shadows, shadows of walkers.
+    ctx.save()
+    ctx.translate(pt.x, pt.y)
+    if (f.mono) {
+      const depth = Math.max(...room.desks.map((d) => d.y + d.d)) + 0.5
+      drawRug(ctx, 0.1, -0.25, 6.3, depth + 0.25, pod.hc)
+    }
+    for (const d of room.desks) castShadow(ctx, d.x, d.y, d.w, d.d, 0.75, 0.13)
+    for (const d of room.desks) blobShadow(ctx, d.seat.x, d.seat.y + 0.05, 0.42, 0.16)
+    for (const c of room.chars.values()) if (c.mode === 'walking' || c.mode === 'standing') blobShadow(ctx, c.x, c.y, 0.4, 0.3 * c.alpha)
+    ctx.restore()
+
+    room.desks.forEach((d, i) => {
+      const occupant = d.occupant ? room.chars.get(d.occupant) : undefined
+      const agent = occupant ? s.agents[occupant.id] : undefined
+      const act = occupant && occupant.mode === 'seated' ? activityOf(s, agent, now) : undefined
+      addAt(px, py, d.seat.x + d.seat.y - 0.3, () => drawChair(ctx, d.seat.x, d.seat.y, pod.hc, d.boss ? 1.35 : 1))
+      addAt(px, py, d.x + d.w / 2 + d.y + d.d / 2, () => drawDesk(ctx, d, act?.activity, now, pod.hc, i, lights, day))
     })
+    if (f.mono) addAt(px, py, 0.4 - 0.4, () => drawTeamSign(ctx, room, s, pod.hc))
+    for (const c of room.chars.values()) {
+      const act = activityOf(s, s.agents[c.id], now)
+      addAt(px, py, c.x + c.y + (c.mode === 'seated' ? -0.05 : 0.05), () => {
+        const pos = drawWorker(ctx, c, act.activity, now, rs.hovered === c.id || rs.selected === c.id, day)
+        heads.set(`${room.id}/${c.id}`, pos.head)
+        overlays.push(() => drawOverlay(ctx, origin, pos, c, act, now, rs, cam))
+      })
+    }
+    // Effects for this team.
+    overlays.push(() => {
+      ctx.save()
+      ctx.translate(origin.x, origin.y)
+      drawEffects(ctx, room, now, origin, rs)
+      ctx.restore()
+    })
+    if (f.mono && cam.zoom < 0.7) overlays.push(() => drawTeamBanner(ctx, origin, room, s, now, cam.zoom))
   }
   sprites.sort((a, b) => a.depth - b.depth)
   for (const sp of sprites) sp.draw()
-
-  // Effects in this room.
-  overlays.push(() => {
-    ctx.save()
-    ctx.translate(origin.x, origin.y)
-    drawEffects(ctx, room, now, origin, rs)
-    ctx.restore()
-  })
 
   // Night: multiply the whole diorama with a cool tone, then add the lamps back.
   if (day < 0.999) {
     ctx.save()
     ctx.globalCompositeOperation = 'multiply'
-    poly(ctx, [iso(SX, SY, WALL_H), iso(ROOM_W, SY, WALL_H), iso(ROOM_W, SY, -0.35), iso(ROOM_W, ROOM_D, -0.35), iso(SX, ROOM_D, -0.35), iso(SX, ROOM_D, WALL_H)], mix('#ffffff', '#5a5fb5', (1 - day) * 0.72))
+    poly(ctx, [iso(SX, SY, WALL_H), iso(RW, SY, WALL_H), iso(RW, SY, -0.35), iso(RW, RD, -0.35), iso(SX, RD, -0.35), iso(SX, RD, WALL_H)], mix('#ffffff', '#5a5fb5', (1 - day) * 0.72))
     ctx.restore()
     // Moonlight through the windows.
-    for (const win of WINDOWS) {
+    for (const win of windows()) {
       const a = iso(win.x + 0.1, 0.02), b = iso(win.x + win.w - 0.1, 0.02)
       const g = edgeGrad(ctx, a, b, iso(win.x, 2.8), `rgba(170,190,255,${0.2 * (1 - day)})`, 'rgba(170,190,255,0)')
       poly(ctx, [a, b, iso(win.x + win.w + 0.9, 2.8), iso(win.x - 0.7, 2.8)], g)
     }
     // Hallway light spilling through the door.
-    glowAt(ctx, iso(DOOR.x + DOOR.w / 2, 0.3, 0), 95, 50, '#ffcf8a', 0.32 * (1 - day) * (0.6 + room.doorOpen * 0.4))
+    glowAt(ctx, iso(DOOR.x + RX + DOOR.w / 2, 0.3, 0), 95, 50, '#ffcf8a', 0.32 * (1 - day) * (0.6 + f.doorOpen * 0.4))
   }
   for (const l of lights) glowAt(ctx, l.p, l.rx, l.ry, l.color, l.day * day + l.night * (1 - day))
 
   // Live rooms get a gentle "lights on" glow at the doorway by day.
-  if (live && day > 0.3) glowAt(ctx, iso(DOOR.x + DOOR.w / 2, 0.15, 0), 60, 30, hc, 0.12 * day)
+  if (live && day > 0.3) glowAt(ctx, iso(DOOR.x + RX + DOOR.w / 2, 0.15, 0), 60, 30, hc, 0.12 * day)
+}
+
+/** A hanging team sign at the head of the pod: session title and a status light. */
+function drawTeamSign(ctx: CanvasRenderingContext2D, room: Room, s: SessionState, hc: string): void {
+  const x0 = 0.25, x1 = 2.6, y = -0.15
+  for (const px of [x0 + 0.12, x1 - 0.12]) box(ctx, px - 0.03, y - 0.03, 0, 0.06, 0.06, 1.2, '#4b4f63', { lit: false, edge: false })
+  const W = (x1 - x0) * 32, H = 0.42 * ZH
+  onWallX(ctx, x0, y + 0.04, 1.25, () => {
+    ctx.font = `700 7.5px ${FONT}`
+    roundRect(ctx, 0, 2, W, H, 4)
+    ctx.fillStyle = 'rgba(0,0,0,0.14)'
+    ctx.fill()
+    roundRect(ctx, 0, 0, W, H, 4)
+    ctx.fillStyle = hc
+    ctx.fill()
+    const waiting = Object.values(s.agents).some((a) => a.status === 'waiting')
+    ctx.fillStyle = s.status === 'working' ? '#c9ffe0' : waiting ? '#ffe7b0' : 'rgba(255,255,255,0.55)'
+    ctx.beginPath(); ctx.arc(7, H / 2, 2.4, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#ffffff'
+    ctx.textBaseline = 'middle'
+    let title = room.title
+    while (title.length > 3 && ctx.measureText(title).width > W - 18) title = title.slice(0, -2) + '…'
+    ctx.fillText(title, 13, H / 2 + 0.5)
+  })
+}
+
+/** From far away, each team gets a readable label over its pod. */
+function drawTeamBanner(ctx: CanvasRenderingContext2D, origin: Pt, room: Room, s: SessionState, now: number, zoom: number): void {
+  const waiting = Object.values(s.agents).filter((a) => a.status === 'waiting').length
+  const p = iso(1.4, -0.15, 2.1)
+  ctx.save()
+  ctx.translate(origin.x + p.x, origin.y + p.y)
+  ctx.globalAlpha = clamp((0.7 - zoom) / 0.12, 0, 1)
+  ctx.scale(0.75 / zoom, 0.75 / zoom)
+  const title = room.title.length > 30 ? room.title.slice(0, 29) + '…' : room.title
+  ctx.font = `700 12px ${FONT}`
+  const w = ctx.measureText(title).width + 26, h = 24
+  const b = waiting ? Math.abs(Math.sin(now / 260)) * 4 : 0
+  ctx.translate(0, -b)
+  roundRect(ctx, -w / 2 + 2, -h + 3, w, h, 12)
+  ctx.fillStyle = 'rgba(30,20,60,0.2)'
+  ctx.fill()
+  roundRect(ctx, -w / 2, -h, w, h, 12)
+  ctx.fillStyle = waiting ? '#ffb547' : '#2d2a4a'
+  ctx.fill()
+  ctx.fillStyle = harnessInfo(room.harness).color
+  ctx.beginPath(); ctx.arc(-w / 2 + 11, -h / 2, 4, 0, Math.PI * 2); ctx.fill()
+  ctx.fillStyle = waiting ? '#3a2600' : '#ffffff'
+  ctx.textBaseline = 'middle'
+  ctx.fillText(title, -w / 2 + 19, -h / 2 + 0.5)
+  if (waiting) {
+    ctx.fillStyle = '#ff5d73'
+    ctx.beginPath(); ctx.arc(w / 2 - 2, -h, 9, 0, Math.PI * 2); ctx.fill()
+    ctx.fillStyle = '#fff'
+    ctx.font = `800 11px ${FONT}`
+    ctx.textAlign = 'center'
+    ctx.fillText(String(waiting), w / 2 - 2, -h + 0.5)
+  }
+  ctx.restore()
 }
 
 /** A gradient whose iso-lines are parallel to the screen line a→b, running from that line to the parallel line through c. */
@@ -303,63 +446,59 @@ function edgeGrad(ctx: CanvasRenderingContext2D, a: Pt, b: Pt, c: Pt, c0: string
   return grad(ctx, a, { x: a.x + nx * d, y: a.y + ny * d }, c0, c1)
 }
 
-const PLANTS: Array<[number, number, number, number]> = [[0.55, 0.6, 1.1, 0], [8.25, 0.45, 0.8, 1], [7.55, 8.05, 0.9, 2], [3.2, 0.5, 0.55, 1]]
-
-function drawStatic(ctx: CanvasRenderingContext2D, room: Room, day: number, hc: string): void {
+function drawStatic(ctx: CanvasRenderingContext2D, day: number, hc: string, mono: boolean): void {
   // Floor slab (the walls sit on it too).
-  poly(ctx, [iso(SX, ROOM_D, 0), iso(ROOM_W, ROOM_D, 0), iso(ROOM_W, ROOM_D, -0.35), iso(SX, ROOM_D, -0.35)], grad(ctx, iso(SX, ROOM_D, 0), iso(SX, ROOM_D, -0.35), shade(M.slab, -0.02), shade(M.slab, -0.16)))
-  poly(ctx, [iso(ROOM_W, SY, 0), iso(ROOM_W, ROOM_D, 0), iso(ROOM_W, ROOM_D, -0.35), iso(ROOM_W, SY, -0.35)], grad(ctx, iso(ROOM_W, SY, 0), iso(ROOM_W, SY, -0.35), shade(M.slab, -0.2), shade(M.slab, -0.34)))
+  poly(ctx, [iso(SX, RD, 0), iso(RW, RD, 0), iso(RW, RD, -0.35), iso(SX, RD, -0.35)], grad(ctx, iso(SX, RD, 0), iso(SX, RD, -0.35), shade(M.slab, -0.02), shade(M.slab, -0.16)))
+  poly(ctx, [iso(RW, SY, 0), iso(RW, RD, 0), iso(RW, RD, -0.35), iso(RW, SY, -0.35)], grad(ctx, iso(RW, SY, 0), iso(RW, SY, -0.35), shade(M.slab, -0.2), shade(M.slab, -0.34)))
   drawFloor(ctx)
   drawWallsStatic(ctx, day, hc)
 
   // Floor decals: rugs, light pools, doormat, shadows. Nothing here has height.
-  drawRug(ctx, 1.2, 2.55, 9.9, 5.3, hc)
-  drawRug(ctx, 7.35, 7.1, 4.55, 1.65, '#9aa3e6', true)
-  floorQuad(ctx, DOORMAT.x, DOORMAT.y, DOORMAT.w, DOORMAT.d, '#a99274', 0.004, 'rgba(60,40,20,0.25)')
-  floorQuad(ctx, DOORMAT.x + 0.1, DOORMAT.y + 0.08, DOORMAT.w - 0.2, DOORMAT.d - 0.16, '#b9a283', 0.005)
-  if (day > 0.02) for (const win of WINDOWS) {
+  if (!mono) drawRug(ctx, 1.2, 2.55, 9.9, 5.3, hc)
+  drawRug(ctx, 7.35 + RX, 7.1 + DY, 4.55, 1.65, '#9aa3e6', true)
+  floorQuad(ctx, DOORMAT.x + RX, DOORMAT.y, DOORMAT.w, DOORMAT.d, '#a99274', 0.004, 'rgba(60,40,20,0.25)')
+  floorQuad(ctx, DOORMAT.x + RX + 0.1, DOORMAT.y + 0.08, DOORMAT.w - 0.2, DOORMAT.d - 0.16, '#b9a283', 0.005)
+  if (day > 0.02) for (const win of windows()) {
     const a = iso(win.x + 0.1, 0.02), b = iso(win.x + win.w - 0.1, 0.02)
     const g = edgeGrad(ctx, a, b, iso(win.x, 2.6), `rgba(255,246,220,${0.4 * day})`, 'rgba(255,246,220,0)')
     poly(ctx, [a, b, iso(win.x + win.w + 0.75, 2.6), iso(win.x - 0.55, 2.6)], g)
   }
-  for (const d of room.desks) castShadow(ctx, d.x, d.y, d.w, d.d, 0.75, 0.13)
-  castShadow(ctx, COUCH.x - 0.3, COUCH.y, COUCH.w + 0.6, COUCH.d, 0.9, 0.2)
-  {
+  shifted(ctx, RX, DY, undefined, () => {
+    castShadow(ctx, COUCH.x - 0.3, COUCH.y, COUCH.w + 0.6, COUCH.d, 0.9, 0.2)
     // The sofa's cast shadow is mostly under the sofa; a soft band along its base settles it on the rug.
     const fx0 = COUCH.x - 0.3, fx1 = COUCH.x + COUCH.w + 0.3, fy = COUCH.y + COUCH.d
     const a = iso(fx0, fy), b = iso(fx1, fy)
     poly(ctx, [a, b, iso(fx1 + 0.1, fy + 0.3), iso(fx0 + 0.1, fy + 0.3)], edgeGrad(ctx, a, b, iso(fx0, fy + 0.3), 'rgba(40,28,64,0.28)', 'rgba(40,28,64,0)'))
     const c = iso(fx1, COUCH.y), d2 = iso(fx1, fy)
     poly(ctx, [c, d2, iso(fx1 + 0.3, fy + 0.1), iso(fx1 + 0.3, COUCH.y + 0.1)], edgeGrad(ctx, c, d2, iso(fx1 + 0.3, COUCH.y), 'rgba(40,28,64,0.22)', 'rgba(40,28,64,0)'))
-  }
+    blobShadow(ctx, SIDE_TABLE.x, SIDE_TABLE.y, 0.4, 0.18)
+  })
   castShadow(ctx, CABINET.x, CABINET.y, CABINET.w, CABINET.d, CABINET.h, 0.14)
-  castShadow(ctx, COUNTER.x, COUNTER.y, COUNTER.w, COUNTER.d, COUNTER.h, 0.14)
-  castShadow(ctx, SHELF.x, SHELF.y, SHELF.w, SHELF.d, SHELF.h, 0.12)
-  blobShadow(ctx, SIDE_TABLE.x, SIDE_TABLE.y, 0.4, 0.18)
-  for (const [px, py, sz] of PLANTS) blobShadow(ctx, px, py, 0.42 * sz, 0.2)
-  for (const d of room.desks) blobShadow(ctx, d.seat.x, d.seat.y + 0.05, 0.42, 0.16)
+  castShadow(ctx, COUNTER.x, COUNTER.y + DY, COUNTER.w, COUNTER.d, COUNTER.h, 0.14)
+  castShadow(ctx, SHELF.x + RX, SHELF.y, SHELF.w, SHELF.d, SHELF.h, 0.12)
+  PLANTS.forEach(([px, py, sz], i) => { const [dx, dy] = plantShift(i); blobShadow(ctx, px + dx, py + dy, 0.42 * sz, 0.2) })
 }
 
 function drawFloor(ctx: CanvasRenderingContext2D): void {
-  floorQuad(ctx, 0, 0, ROOM_W, ROOM_D, M.floor)
+  floorQuad(ctx, 0, 0, RW, RD, M.floor)
   // Staggered oak planks.
-  for (let y = 0; y < ROOM_D; y++) {
+  for (let y = 0; y < RD; y++) {
     let x = -rnd(y, 1) * 2.4
     let i = 0
-    while (x < ROOM_W) {
+    while (x < RW) {
       const len = 1.9 + rnd(y, i, 2) * 1.5
-      const x0 = Math.max(0, x), x1 = Math.min(ROOM_W, x + len)
+      const x0 = Math.max(0, x), x1 = Math.min(RW, x + len)
       floorQuad(ctx, x0, y, x1 - x0, 1, shade(M.floor, (rnd(y, i, 3) - 0.5) * 0.1))
-      if (x1 < ROOM_W) line(ctx, iso(x1, y), iso(x1, y + 1), 'rgba(90,55,25,0.22)')
+      if (x1 < RW) line(ctx, iso(x1, y), iso(x1, y + 1), 'rgba(90,55,25,0.22)')
       x += len
       i++
     }
-    if (y > 0) line(ctx, iso(0, y), iso(ROOM_W, y), 'rgba(90,55,25,0.2)')
+    if (y > 0) line(ctx, iso(0, y), iso(RW, y), 'rgba(90,55,25,0.2)')
   }
   // Sheen from the windows, and ambient occlusion along the walls.
-  floorQuad(ctx, 0, 0, ROOM_W, ROOM_D, grad(ctx, iso(2, 0), iso(ROOM_W, ROOM_D), 'rgba(255,246,228,0.22)', 'rgba(255,246,228,0)'))
-  floorQuad(ctx, 0, 0, ROOM_W, 1.1, edgeGrad(ctx, iso(0, 0), iso(ROOM_W, 0), iso(0, 1.1), 'rgba(70,45,30,0.2)', 'rgba(70,45,30,0)'))
-  floorQuad(ctx, 0, 0, 1.1, ROOM_D, edgeGrad(ctx, iso(0, 0), iso(0, ROOM_D), iso(1.1, 0), 'rgba(70,45,30,0.2)', 'rgba(70,45,30,0)'))
+  floorQuad(ctx, 0, 0, RW, RD, grad(ctx, iso(2, 0), iso(RW, RD), 'rgba(255,246,228,0.22)', 'rgba(255,246,228,0)'))
+  floorQuad(ctx, 0, 0, RW, 1.1, edgeGrad(ctx, iso(0, 0), iso(RW, 0), iso(0, 1.1), 'rgba(70,45,30,0.2)', 'rgba(70,45,30,0)'))
+  floorQuad(ctx, 0, 0, 1.1, RD, edgeGrad(ctx, iso(0, 0), iso(0, RD), iso(1.1, 0), 'rgba(70,45,30,0.2)', 'rgba(70,45,30,0)'))
 }
 
 function drawRug(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, d: number, color: string, plain = false): void {
@@ -384,7 +523,7 @@ function drawRug(ctx: CanvasRenderingContext2D, x: number, y: number, w: number,
 }
 
 function drawWallsStatic(ctx: CanvasRenderingContext2D, day: number, hc: string): void {
-  const W = ROOM_W, D = ROOM_D, H = WALL_H
+  const W = RW, D = RD, H = WALL_H
   const RAIL = 0.95
   // Back wall (y = 0).
   poly(ctx, [iso(0, 0, 0), iso(W, 0, 0), iso(W, 0, H), iso(0, 0, H)], edgeGrad(ctx, iso(0, 0, H), iso(W, 0, H), iso(0, 0, 0), shade(M.wall, 0.04), shade(M.wall, -0.04)))
@@ -411,21 +550,26 @@ function drawWallsStatic(ctx: CanvasRenderingContext2D, day: number, hc: string)
   ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y); ctx.lineTo(c3.x, c3.y)
   ctx.stroke()
 
-  WINDOWS.forEach((win, i) => drawWindow(ctx, win.x, win.w, day, i === WINDOWS.length - 1 ? 'sun' : i === 0 ? 'moon' : 'none'))
-  drawDoorFrame(ctx)
+  const wins = windows()
+  wins.forEach((win, i) => drawWindow(ctx, win.x, win.w, day, i === wins.length - 1 ? 'sun' : i === 0 ? 'moon' : 'none'))
+  shifted(ctx, RX, 0, undefined, () => drawDoorFrame(ctx))
   drawPrint(ctx, hc)
 }
 
-function drawWallsLive(ctx: CanvasRenderingContext2D, room: Room, s: SessionState, now: number, day: number, hc: string): void {
-  for (const win of WINDOWS) drawWindowLive(ctx, win.x, win.w, now, day)
-  drawDoorLeaf(ctx, room)
-  drawWallScreen(ctx, s, now, hc)
+interface WallInfo { title: string; status: string; plan?: Room['plan']; doorOpen: number; sessions: SessionState[] }
+
+function drawWallsLive(ctx: CanvasRenderingContext2D, info: WallInfo, now: number, day: number, hc: string): void {
+  for (const win of windows()) drawWindowLive(ctx, win.x, win.w, now, day)
+  shifted(ctx, RX, 0, undefined, () => {
+    drawDoorLeaf(ctx, info.doorOpen)
+    drawWallScreen(ctx, info.sessions, info.status, now)
+  })
 
   // Name plaque above the door: small, up to two lines, inside the wall and clear of the screen.
   {
     ctx.font = `700 8px ${FONT}`
     const maxText = 66
-    const words = room.title.split(/\s+/)
+    const words = info.title.split(/\s+/)
     const lines: string[] = []
     let cur = ''
     for (const wd of words) {
@@ -440,7 +584,7 @@ function drawWallsLive(ctx: CanvasRenderingContext2D, room: Room, s: SessionStat
     }
     const tw = Math.max(...lines.map((l) => ctx.measureText(l).width)) + 24
     const th = 8 + lines.length * 9.5
-    const px = clamp(DOOR.x + DOOR.w / 2 - tw / TW, 9.45, ROOM_W - 0.3 - tw / (TW / 2))
+    const px = clamp(DOOR.x + RX + DOOR.w / 2 - tw / TW, 9.45 + RX, RW - 0.3 - tw / (TW / 2))
     onWallX(ctx, px, 0, DOOR.h + 0.14 + th / ZH, () => {
       ctx.font = `700 8px ${FONT}`
       roundRect(ctx, 0, 2, tw, th, 5)
@@ -449,7 +593,7 @@ function drawWallsLive(ctx: CanvasRenderingContext2D, room: Room, s: SessionStat
       roundRect(ctx, 0, 0, tw, th, 5)
       ctx.fillStyle = hc
       ctx.fill()
-      ctx.fillStyle = s.status === 'working' ? '#c9ffe0' : s.status === 'waiting' ? '#ffe7b0' : 'rgba(255,255,255,0.55)'
+      ctx.fillStyle = info.status === 'working' ? '#c9ffe0' : info.status === 'waiting' ? '#ffe7b0' : 'rgba(255,255,255,0.55)'
       ctx.beginPath(); ctx.arc(8, th / 2, 2.6, 0, Math.PI * 2); ctx.fill()
       ctx.fillStyle = '#ffffff'
       ctx.textBaseline = 'top'
@@ -472,7 +616,7 @@ function drawWallsLive(ctx: CanvasRenderingContext2D, room: Room, s: SessionStat
     ctx.fillStyle = '#b9c1cf'
     ctx.fillRect(14, 1, Wb - 28, 3)
     for (const [i, c] of ['#ff6f91', '#5aa9ff', '#2fbf71'].entries()) { ctx.fillStyle = c; ctx.fillRect(22 + i * 11, -2, 8, 2.5) }
-    const plan = room.plan
+    const plan = info.plan
     ctx.font = `800 8px ${FONT}`
     ctx.textBaseline = 'top'
     if (plan) {
@@ -542,7 +686,7 @@ function drawWallsLive(ctx: CanvasRenderingContext2D, room: Room, s: SessionStat
 }
 
 function drawPrint(ctx: CanvasRenderingContext2D, hc: string): void {
-  onWallY(ctx, 0, 8.35, 1.25, () => {
+  onWallY(ctx, 0, 8.35 + DY, 1.25, () => {
     const Wp = 1.1 * (TW / 2), Hp = 1.0 * ZH
     ctx.fillStyle = 'rgba(0,0,0,0.1)'
     ctx.fillRect(2, -Hp + 3, Wp, Hp)
@@ -689,14 +833,14 @@ function drawDoorFrame(ctx: CanvasRenderingContext2D): void {
   ctx.stroke()
 }
 
-function drawDoorLeaf(ctx: CanvasRenderingContext2D, room: Room): void {
+function drawDoorLeaf(ctx: CanvasRenderingContext2D, doorOpen: number): void {
   const dx = DOOR.x, dw = DOOR.w, dh = DOOR.h
   // The leaf swings into the room around its hinge at x = dx.
-  const ang = room.doorOpen * 1.3
+  const ang = doorOpen * 1.3
   const ex = dx + Math.cos(ang) * dw, ey = Math.sin(ang) * dw
   const leaf = [iso(dx, 0, 0), iso(ex, ey, 0), iso(ex, ey, dh), iso(dx, 0, dh)]
   const wood = '#8d5d3f'
-  poly(ctx, leaf, grad(ctx, leaf[3]!, leaf[2]!, shade(wood, 0.06), shade(wood, -0.1 - room.doorOpen * 0.12)))
+  poly(ctx, leaf, grad(ctx, leaf[3]!, leaf[2]!, shade(wood, 0.06), shade(wood, -0.1 - doorOpen * 0.12)))
   // Panels.
   const at = (u: number, z: number) => iso(dx + Math.cos(ang) * dw * u, Math.sin(ang) * dw * u, z)
   for (const [z0, z1] of [[0.25, 0.85], [1.1, 1.8]] as const) {
@@ -713,14 +857,14 @@ function drawDoorLeaf(ctx: CanvasRenderingContext2D, room: Room): void {
 }
 
 /** Wall-mounted dashboard: tool calls over the last 15 minutes, stacked by kind, like Mission Control's throughput chart. */
-function drawWallScreen(ctx: CanvasRenderingContext2D, s: SessionState, now: number, hc: string): void {
+function drawWallScreen(ctx: CanvasRenderingContext2D, sessions: SessionState[], status: string, now: number): void {
   const x0 = 7.95, x1 = 9.3, z0 = 1.5, z1 = 2.32
   poly(ctx, [iso(x0 - 0.04, 0, z0 - 0.04), iso(x1 + 0.04, 0, z0 - 0.04), iso(x1 + 0.04, 0, z1 + 0.04), iso(x0 - 0.04, 0, z1 + 0.04)], '#1f2230')
   poly(ctx, [iso(x0, 0, z0), iso(x1, 0, z0), iso(x1, 0, z1), iso(x0, 0, z1)], grad(ctx, iso(x0, 0, z1), iso(x0, 0, z0), '#1b2340', '#101523'))
   const BINS = 15
   const bins: Array<Map<ToolCategory, number>> = Array.from({ length: BINS }, () => new Map())
   const totals = new Array<number>(BINS).fill(0)
-  for (let i = s.toolOrder.length - 1; i >= 0; i--) {
+  for (const s of sessions) for (let i = s.toolOrder.length - 1; i >= 0; i--) {
     const t = s.tools[s.toolOrder[i]!]
     if (!t) continue
     const age = now - t.startedAt
@@ -750,10 +894,9 @@ function drawWallScreen(ctx: CanvasRenderingContext2D, s: SessionState, now: num
     ctx.fillStyle = 'rgba(255,255,255,0.55)'
     ctx.textBaseline = 'top'
     ctx.fillText('ACTIVITY', 0, 0)
-    ctx.fillStyle = s.status === 'working' ? '#4fe39b' : s.status === 'waiting' ? '#ffb547' : 'rgba(255,255,255,0.4)'
+    ctx.fillStyle = status === 'working' ? '#4fe39b' : status === 'waiting' ? '#ffb547' : 'rgba(255,255,255,0.4)'
     ctx.beginPath(); ctx.arc((x1 - x0 - 0.16) * (TW / 2) - 5, 3.5, 2, 0, Math.PI * 2); ctx.fill()
   })
-  void hc
 }
 
 // ─── Furniture ───────────────────────────────────────────────────────────
@@ -1111,8 +1254,7 @@ function drawPlant(ctx: CanvasRenderingContext2D, x: number, y: number, size: nu
   }
 }
 
-function drawCat(ctx: CanvasRenderingContext2D, room: Room, now: number): void {
-  const cat = room.cat
+function drawCat(ctx: CanvasRenderingContext2D, cat: Cat, now: number): void {
   const p = iso(cat.x, cat.y, 0)
   const napping = now < cat.napUntil
   const walking = cat.path.length > 0

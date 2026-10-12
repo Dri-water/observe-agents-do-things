@@ -27,17 +27,22 @@ import { KeyedList, tickTo } from '../../shared/motion'
 import { Disposer, type Visualization, type VizContext } from '../types'
 import { clamp } from '../../shared/dom'
 import { iso } from './iso'
-import { activityOf, Office, ROOM_D, ROOM_W } from './model'
+import { activityOf, Office, POD_W, ROOM_D, ROOM_W } from './model'
 import { attachEffects, daylight, getTimeMode, renderOffice, seatZ, setOfficeTheme, setTimeMode, type Camera, type TimeMode } from './render'
 import { resolveTheme, THEME_SETTING } from '../../host/settings'
 
 export const office: Visualization = {
   id: 'office',
   name: 'Agent Office',
-  description: 'A cosy isometric office: each session is a room, each agent a little blob at a desk.',
+  description: 'A cosy isometric office: every session is a team pod on one open-plan floor, each agent a little blob at a desk.',
   icon: '⌂',
   settings: [
     { ...THEME_SETTING, description: 'Colours of the controls, the front desk and the space around the rooms. Day and night lighting is separate.' },
+    {
+      key: 'layout', label: 'Rooms', type: 'select', default: 'one',
+      description: 'One open-plan floor where every session is a team pod (it grows as teams and agents arrive), or a room for each session.',
+      options: [{ value: 'one', label: 'One open-plan floor' }, { value: 'rooms', label: 'A room per session' }],
+    },
     { key: 'labels', label: 'Name tags', type: 'toggle', default: true, description: 'Show name tags under the blobs. Shortcut: L.' },
     { key: 'sidebar', label: 'Front desk sidebar', type: 'toggle', default: true, description: 'Attention queue, filed diffs and intercom in a sidebar next to the office. Shortcut: D.' },
     {
@@ -50,7 +55,7 @@ export const office: Visualization = {
 }
 
 /** Rooms on stage at once in the all-rooms view. */
-const MAX_ROOMS = 6
+const MAX_ROOMS = 8
 const ATTN_ICON: Record<AttentionItem['kind'], string> = { waiting: '⏸', errors: '✕', finished: '✓', aborted: '■', context: '◔', 'long-tool': '⧗' }
 
 const TEMPLATE = `
@@ -129,9 +134,16 @@ function mount(root: HTMLElement, vctx: VizContext) {
   }))
 
   /** The rooms on stage: the same sessions Mission Control shows by default, the most relevant few. Sorted by start so rooms keep their places. */
+  const openPlan = () => settings.get<string>('office.layout') !== 'rooms'
+  d.add(settings.on('office.layout', () => { ui.autoFit = true; ui.selected = undefined; renderCard() }))
+
   function visibleSessions(world: WorldState): string[] {
-    if (ui.view !== 'auto') return world.sessions[ui.view] ? [ui.view] : []
-    const shown = recentSessions(world).slice(0, MAX_ROOMS).sort((a, b) => a.startedAt - b.startedAt || (a.id < b.id ? -1 : 1)).map((s) => s.id)
+    // On the open floor a tab only moves the camera: every team stays at its pod.
+    if (ui.view !== 'auto' && !openPlan()) return world.sessions[ui.view] ? [ui.view] : []
+    const list = recentSessions(world).slice(0, MAX_ROOMS)
+    const focused = ui.view !== 'auto' ? world.sessions[ui.view] : undefined
+    if (focused && !list.includes(focused)) list.splice(MAX_ROOMS - 1, 1, focused)
+    const shown = list.sort((a, b) => a.startedAt - b.startedAt || (a.id < b.id ? -1 : 1)).map((s) => s.id)
     if (shown.length) return shown
     const recent = mostRecentSession(world)
     return recent ? [recent.id] : []
@@ -141,6 +153,23 @@ function mount(root: HTMLElement, vctx: VizContext) {
 
   function roomBounds() {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+    const grow = (x: number, y: number, z: number) => {
+      const p = iso(x, y, z)
+      minX = Math.min(minX, p.x); maxX = Math.max(maxX, p.x)
+      minY = Math.min(minY, p.y); maxY = Math.max(maxY, p.y)
+    }
+    if (model.mono) {
+      const pod = ui.view !== 'auto' ? model.rooms.get(ui.view) : undefined
+      if (pod) {
+        // Frame one team's pod.
+        const depth = Math.max(...pod.desks.map((dk) => dk.y + dk.d)) + 1.4
+        for (const [x, y, z] of [[-0.4, -0.8, 2.4], [POD_W + 0.2, -0.8, 1.8], [-0.4, depth, 1.4], [POD_W + 0.2, depth, -0.2]] as const) grow(pod.ox + x, pod.oy + y, z)
+      } else {
+        const { w, d } = model.stage
+        for (const [x, y, z] of [[-0.3, -0.3, 3.4], [w, -0.3, 3.4], [-0.3, d, 3.4], [w, d, -0.4], [-0.3, d, -0.4]] as const) grow(x, y, z)
+      }
+      return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : undefined
+    }
     for (const r of model.rooms.values()) {
       for (const [x, y, z] of [[r.ox - 0.3, r.oy - 0.3, 3.4], [r.ox + ROOM_W, r.oy - 0.3, 3.4], [r.ox - 0.3, r.oy + ROOM_D, 3.4], [r.ox + ROOM_W, r.oy + ROOM_D, -0.4], [r.ox - 0.3, r.oy + ROOM_D, -0.4]] as const) {
         const p = iso(x, y, z)
@@ -156,7 +185,9 @@ function mount(root: HTMLElement, vctx: VizContext) {
     if (!b) return
     const w = canvas.clientWidth, hh = canvas.clientHeight
     const padTop = 80, padBottom = w < 760 ? 60 : 70
-    const zoom = clamp(Math.min((w - 40) / (b.maxX - b.minX), (hh - padTop - padBottom) / (b.maxY - b.minY)), 0.35, 2.4)
+    // A single pod is small: don't dive in further than a comfortable reading distance.
+    const maxZoom = model.mono && ui.view !== 'auto' ? 1.4 : 2.4
+    const zoom = clamp(Math.min((w - 40) / (b.maxX - b.minX), (hh - padTop - padBottom) / (b.maxY - b.minY)), 0.25, maxZoom)
     const cx = (b.minX + b.maxX) / 2
     const cy = (b.minY + b.maxY) / 2 - (padTop - padBottom) / 2 / zoom
     const k = Math.min(1, dt * 3)
@@ -272,7 +303,7 @@ function mount(root: HTMLElement, vctx: VizContext) {
 
   /** Bring a session's room (and optionally one of its agents) into view. */
   function focus(sessionId: string, agentId?: string): void {
-    if (!model.rooms.has(sessionId)) setView(sessionId)
+    if (!model.rooms.has(sessionId) || model.mono) setView(sessionId)
     else ui.autoFit = true
     if (agentId) {
       ui.selected = { room: sessionId, char: agentId }
@@ -537,16 +568,17 @@ function mount(root: HTMLElement, vctx: VizContext) {
 
   let last = performance.now()
   let lastHud = 0
-  let visible: string[] = []
+  let visible = ''
   d.loop((t) => {
     const dt = Math.min(0.1, (t - last) / 1000)
     last = t
     const now = Date.now()
     const world = client.world
     const ids = visibleSessions(world)
-    if (ids.join('|') !== visible.join('|')) {
-      visible = ids
-      model.layout(ids, world)
+    const sig = `${openPlan()}|${ids.join('|')}`
+    if (sig !== visible) {
+      visible = sig
+      model.layout(ids, world, openPlan())
       dirty = true
       renderRooms()
     }

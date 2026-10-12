@@ -92,6 +92,8 @@ export interface BlobDraw {
   dim?: number
   /** 0..1 brightness boost, to survive a darkening pass drawn on top. */
   lift?: number
+  /** Extra drawing in the blob's viewBox space: `body` runs over the base shape (under the face), `top` over everything. */
+  dress?: { body?: (ctx: CanvasRenderingContext2D, art: BlobArt) => void; top?: (ctx: CanvasRenderingContext2D, art: BlobArt) => void }
 }
 
 /** Draw a blob with its bottom centre at (x, y) on the current transform. */
@@ -106,7 +108,11 @@ export function drawBlob(ctx: CanvasRenderingContext2D, art: BlobArt, x: number,
   if (o.dim) filters.push(`saturate(${1 - o.dim * 0.5})`, `brightness(${1 - o.dim * 0.08})`)
   if (o.lift) filters.push(`brightness(${1 + o.lift * 0.9})`, `saturate(${1 + o.lift * 0.25})`)
   if (filters.length) ctx.filter = filters.join(' ')
-  for (const b of art.body) { ctx.fillStyle = b.fill; ctx.fill(b.path) }
+  art.body.forEach((b, i) => {
+    ctx.fillStyle = b.fill
+    ctx.fill(b.path)
+    if (i === 0 && o.dress?.body) { ctx.save(); o.dress.body(ctx, art); ctx.restore() }
+  })
   // A soft highlight so the blob reads as a rounded thing under the room's light.
   const f = art.frame
   ctx.save()
@@ -125,6 +131,7 @@ export function drawBlob(ctx: CanvasRenderingContext2D, art: BlobArt, x: number,
     ctx.fill(e.path)
     ctx.restore()
   }
+  if (o.dress?.top) { ctx.save(); o.dress.top(ctx, art); ctx.restore() }
   if (o.headset) {
     ctx.strokeStyle = '#2d2a3e'
     ctx.lineCap = 'round'

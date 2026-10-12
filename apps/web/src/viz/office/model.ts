@@ -24,6 +24,8 @@ export interface Desk {
   d: number
   boss: boolean
   seat: Pt
+  /** How to reach the seat from the pod's aisle (open floor only). */
+  via?: Pt[]
   occupant?: string
 }
 
@@ -40,12 +42,157 @@ export const SHELF = { x: 6.0, y: 0.05, w: 1.6, d: 0.5, h: 1.9 }
 const COUCH_SPOTS: Pt[] = [{ x: 8.92, y: 8.26 }, { x: 9.65, y: 8.26 }, { x: 10.38, y: 8.26 }]
 const STAND_SPOTS: Pt[] = [{ x: 1.45, y: 6.7 }, { x: 1.5, y: 7.5 }, { x: 1.45, y: 8.3 }, { x: 4.6, y: 8.4 }, { x: 6.2, y: 8.4 }]
 
+/** Where the i-th worker without a desk waits: by the coffee machine, then a line along the back wall, then a second line in front of it. */
+function standSpot(i: number): Pt {
+  if (i < STAND_SPOTS.length) return STAND_SPOTS[i]!
+  const k = i - STAND_SPOTS.length
+  const row = Math.floor(k / 10) % 2, n = k % 10, lap = Math.floor(k / 20)
+  return { x: 8.8 - n * 0.8 + row * 0.4 + lap * 0.2, y: 1.4 + row * 0.5 + lap * 0.15 }
+}
+
 function deskLayout(): Desk[] {
   const sub = (x: number, y: number): Desk => ({ x, y, w: 1.6, d: 0.9, boss: false, seat: { x: x + 0.8, y: y - 0.55 } })
   return [
     { x: 4.8, y: 3.7, w: 2.5, d: 1.1, boss: true, seat: { x: 6.05, y: 3.1 } },
     sub(1.7, 3.0), sub(8.9, 3.0), sub(1.7, 5.7), sub(8.9, 5.7), sub(3.7, 6.9), sub(6.6, 6.9),
   ]
+}
+
+/** A place to walk to, and how to get there from the aisle (empty in the classic room, which routes on its own). */
+export interface Spot { at: Pt; via: Pt[] }
+
+/** Everything a team's workers walk to, in the team's own tiles. */
+export interface OfficeLayout {
+  /** Pods on one open-plan floor route along their own aisle; the classic room uses its L-shaped walk. */
+  mono: boolean
+  aisleX: number
+  lanes: number[]
+  desks(rows: number): Desk[]
+  couch: Spot[]
+  /** On the open floor the lounge is shared by every team. */
+  sharedCouch: boolean
+  stand(i: number): Spot
+  door: Spot
+  cabinet: Pt3
+  window: Pt3
+}
+
+const spot = (at: Pt): Spot => ({ at, via: [] })
+
+/** One session, one room: the original layout. */
+export const CLASSIC: OfficeLayout = {
+  mono: false,
+  aisleX: 0,
+  lanes: [],
+  desks: () => deskLayout(),
+  couch: COUCH_SPOTS.map(spot),
+  sharedCouch: false,
+  stand: (i) => spot(standSpot(i)),
+  door: spot(ENTRANCE),
+  cabinet: { x: CABINET.x + CABINET.w / 2, y: CABINET.y + CABINET.d / 2, z: CABINET.h + 0.1 },
+  window: { x: 2.0, y: 0.1, z: 1.7 },
+}
+
+// ─── The open-plan floor: every session is a team pod ────────────────────
+
+export const POD_W = 7.0
+/** Pods start this far from the back wall, below the corridor that leads to the door. */
+export const POD_Y0 = 2.6
+const FLOOR_LEFT = 1.7
+const FLOOR_RIGHT = 0.5
+const FLOOR_FRONT = 2.3
+/** A pod's own aisle, along its right-hand edge. */
+const POD_AISLE = 6.65
+const SEAT0 = 2.95
+const SEAT_STEP = 2.2
+export const MAX_POD_ROWS = 4
+/** The corridor along the back wall, in floor tiles. */
+const BACK_CORRIDOR = 2.1
+
+const lastSeat = (rows: number) => SEAT0 + (rows - 1) * SEAT_STEP
+export const podDepth = (rows: number) => lastSeat(rows) + 2.7
+
+export interface Stage { w: number; d: number }
+export interface Grid { cols: number; rows: number; rowDepth: number }
+
+/** Two teams side by side, then a 2×2, then three or four across; more rows toward the front. */
+export function podGrid(n: number, deskRows: number): Grid {
+  const cols = n <= 2 ? Math.max(1, n) : n <= 4 ? 2 : n <= 6 ? 3 : 4
+  return { cols, rows: Math.max(1, Math.ceil(n / cols)), rowDepth: podDepth(deskRows) + 0.8 }
+}
+
+export function floorSize(g: Grid): Stage {
+  return { w: Math.max(ROOM_W, FLOOR_LEFT + g.cols * POD_W + FLOOR_RIGHT), d: Math.max(ROOM_D, POD_Y0 + g.rows * g.rowDepth + FLOOR_FRONT) }
+}
+
+export function podOrigin(slot: number, g: Grid): Pt {
+  return { x: FLOOR_LEFT + (slot % g.cols) * POD_W, y: POD_Y0 + Math.floor(slot / g.cols) * g.rowDepth }
+}
+
+/** Where the shared furniture of an open floor stands (floor tiles). */
+export function floorFurniture(st: Stage) {
+  const rx = st.w - ROOM_W, dy = st.d - ROOM_D
+  return {
+    entrance: { x: ENTRANCE.x + rx, y: ENTRANCE.y },
+    couch: COUCH_SPOTS.map((p) => ({ x: p.x + rx, y: p.y + dy })),
+  }
+}
+
+/** The layout of the pod at (px, py) on an open floor of the given size, for `rows` rows of desks. Pod-local tiles. */
+export function podLayout(px: number, py: number, st: Stage, rows: number): OfficeLayout {
+  const aisle = (y: number): Pt => ({ x: POD_AISLE, y })
+  const seat = (x: number, y: number, lane: number): Spot => ({ at: { x, y }, via: [aisle(lane), { x, y: lane }, { x, y }] })
+  const top = BACK_CORRIDOR - py
+  const front = st.d - FLOOR_FRONT + 0.3 - py
+  const standY = lastSeat(rows) + 2.0
+  const f = floorFurniture(st)
+  const ent = { x: f.entrance.x - px, y: f.entrance.y - py }
+  return {
+    mono: true,
+    aisleX: POD_AISLE,
+    lanes: [top, 0.4, ...Array.from({ length: rows }, (_, r) => SEAT0 + r * SEAT_STEP - 0.45), standY, standY + 0.6, front],
+    desks(n) {
+      const sub = (x: number, sy: number): Desk => ({ x, y: sy + 0.55, w: 1.6, d: 0.9, boss: false, seat: { x: x + 0.8, y: sy }, via: seat(x + 0.8, sy, sy - 0.45).via })
+      const desks: Desk[] = [{ x: 1.8, y: 1.0, w: 2.5, d: 1.1, boss: true, seat: { x: 3.05, y: 0.4 }, via: [aisle(0.4), { x: 3.05, y: 0.4 }] }]
+      for (let r = 0; r < n; r++) {
+        const sy = SEAT0 + r * SEAT_STEP
+        for (const x of [0.3, 2.35, 4.4]) desks.push(sub(x, sy))
+      }
+      return desks
+    },
+    couch: f.couch.map((p) => {
+      const x = p.x - px, y = p.y - py
+      return { at: { x, y }, via: [aisle(front), { x, y: front }, { x, y }] }
+    }),
+    sharedCouch: true,
+    stand: (i) => { const y = standY + Math.floor(i / 4) * 0.6; return seat([1.0, 2.5, 4.0, 5.5][i % 4]!, y, y) },
+    door: { at: ent, via: [aisle(top), { x: ent.x, y: top }, ent] },
+    cabinet: { x: CABINET.x + CABINET.w / 2 - px, y: CABINET.y + CABINET.d / 2 - py, z: CABINET.h + 0.1 },
+    window: { x: 2.0 - px, y: 0.1 - py, z: 1.7 },
+  }
+}
+
+/** Out of the current spot to the pod's aisle, along it, and into the target spot. */
+function viaRoute(c: Char, from: Spot | undefined, to: Spot, layout: OfficeLayout): Pt[] {
+  const out = from && from.via.length && Math.hypot(from.at.x - c.x, from.at.y - c.y) < 0.3 && !c.path.length ? [...from.via].reverse().slice(1) : []
+  if (!out.length) {
+    const lane = layout.lanes.reduce((best, y) => (Math.abs(y - c.y) < Math.abs(best - c.y) ? y : best), layout.lanes[0]!)
+    const ax = layout.aisleX
+    if (Math.abs(c.x - ax) > 0.3) out.push({ x: c.x, y: lane })
+    out.push({ x: ax, y: Math.abs(c.x - ax) > 0.3 ? lane : c.y })
+  }
+  const clean: Pt[] = []
+  let cur: Pt = { x: c.x, y: c.y }
+  for (const p of [...out, ...to.via.map((q) => ({ ...q }))]) {
+    if (Math.hypot(p.x - cur.x, p.y - cur.y) < 0.01) continue
+    clean.push(p)
+    cur = p
+  }
+  return clean
+}
+
+function walkTo(c: Char, from: Spot | undefined, to: Spot, layout: OfficeLayout): Pt[] {
+  return layout.mono ? viaRoute(c, from, to, layout) : route(c, to.at)
 }
 
 export type Mode = 'walking' | 'seated' | 'lounging' | 'standing'
@@ -75,6 +222,8 @@ export interface Char {
   blinkAt: number
   alpha: number
   doneSince?: number
+  /** The layout revision this worker's waiting spot belongs to. */
+  rev: number
 }
 
 export interface Cat { x: number; y: number; path: Pt[]; napUntil: number; facing: 1 | -1; phase: number }
@@ -96,6 +245,12 @@ export interface Room {
   bornAt: number
   /** Workers who already went home (only come back if they get work again). */
   gone: Set<string>
+  layout: OfficeLayout
+  /** Rows of desks in the pod (pods grow with the team). */
+  rows: number
+  /** Bumped when the layout moves the waiting line. */
+  rev: number
+  slot: number
 }
 
 export type Effect =
@@ -132,9 +287,28 @@ export class Office {
   private diffBusy = new Map<string, number>()
   private seen = new Set<number>()
 
-  /** Place rooms for the sessions on stage (stable order = stable positions). */
-  layout(ids: string[], world: WorldState, now = Date.now()): void {
+  /** One open-plan floor for every session (true), or a room per session. */
+  mono = false
+  stage: Stage = { w: ROOM_W, d: ROOM_D }
+  /** The open floor's cat. */
+  cat: Cat = { x: 5, y: 2, path: [], napUntil: 0, facing: 1, phase: Math.random() * 10 }
+  /** The open floor's door, shared by every team. */
+  door = { open: 0, until: 0 }
+  private slots = new Map<string, number>()
+
+  /**
+   * Place rooms for the sessions on stage (stable order = stable positions).
+   * With `openPlan`, two or more sessions share one floor, each team in its own pod.
+   */
+  layout(ids: string[], world: WorldState, openPlan = false, now = Date.now()): void {
+    const mono = openPlan && ids.length > 1
+    if (mono !== this.mono) {
+      this.rooms.clear()
+      this.slots.clear()
+    }
+    this.mono = mono
     for (const id of [...this.rooms.keys()]) if (!ids.includes(id)) this.rooms.delete(id)
+    for (const id of [...this.slots.keys()]) if (!ids.includes(id)) this.slots.delete(id)
     const cols = ids.length <= 2 ? ids.length : Math.ceil(Math.sqrt(ids.length))
     ids.forEach((id, i) => {
       const s = world.sessions[id]
@@ -142,18 +316,61 @@ export class Office {
       let room = this.rooms.get(id)
       if (!room) {
         room = {
-          id, ox: 0, oy: 0, harness: s.harness, title: '', desks: deskLayout(), chars: new Map(),
+          id, ox: 0, oy: 0, harness: s.harness, title: '', desks: [], chars: new Map(),
           doorOpen: 0, doorUntil: 0, cat: { x: 5, y: 5.6, path: [], napUntil: 0, facing: 1, phase: Math.random() * 10 }, initialized: false, gone: new Set(), bornAt: now,
+          layout: CLASSIC, rows: 1, rev: 0, slot: -1,
         }
         this.rooms.set(id, room)
       }
-      // Rooms march along the x axis (down-right) and wrap to new rows along y.
-      room.ox = (i % cols) * (ROOM_W + GAP)
-      room.oy = Math.floor(i / cols) * (ROOM_D + GAP)
+      if (!mono) {
+        // Rooms march along the x axis (down-right) and wrap to new rows along y.
+        room.ox = (i % cols) * (ROOM_W + GAP)
+        room.oy = Math.floor(i / cols) * (ROOM_D + GAP)
+        room.layout = CLASSIC
+        if (!room.desks.length) room.desks = CLASSIC.desks(0)
+      }
     })
+    if (mono) this.placePods()
+  }
+
+  /** Give every team a pod and size the floor around them. */
+  private placePods(): void {
+    const used = new Set(this.slots.values())
+    for (const id of this.rooms.keys()) {
+      if (this.slots.has(id)) continue
+      let k = 0
+      while (used.has(k)) k++
+      this.slots.set(id, k)
+      used.add(k)
+    }
+    let maxSlot = 0, rows = 1
+    for (const r of this.rooms.values()) { maxSlot = Math.max(maxSlot, this.slots.get(r.id) ?? 0); rows = Math.max(rows, r.rows) }
+    const grid = podGrid(maxSlot + 1, rows)
+    this.stage = floorSize(grid)
+    for (const r of this.rooms.values()) {
+      r.slot = this.slots.get(r.id) ?? 0
+      const o = podOrigin(r.slot, grid)
+      r.ox = o.x
+      r.oy = o.y
+      r.layout = podLayout(o.x, o.y, this.stage, r.rows)
+      const want = r.layout.desks(r.rows)
+      for (let i = r.desks.length; i < want.length; i++) r.desks.push(want[i]!)
+    }
   }
 
   sync(world: WorldState, events: ObserverEvent[], now: number): void {
+    if (this.mono) {
+      // Pods grow a row of desks at a time as teams grow (and never shrink while on stage).
+      let grew = false
+      for (const room of this.rooms.values()) {
+        const s = world.sessions[room.id]
+        if (!s) continue
+        const busy = Object.values(s.agents).filter((a) => a.id !== s.rootAgentId && a.status !== 'done').length
+        const rows = Math.min(MAX_POD_ROWS, Math.max(room.rows, Math.ceil(busy / 3)))
+        if (rows !== room.rows) { room.rows = rows; room.rev++; grew = true }
+      }
+      if (grew) this.placePods()
+    }
     for (const room of this.rooms.values()) {
       const s = world.sessions[room.id]
       if (!s) continue
@@ -192,7 +409,7 @@ export class Office {
       if (!c) {
         c = {
           id: a.id, sessionId: s.id, name: isRoot ? 'lead' : a.name, role: a.role, isRoot,
-          x: ENTRANCE.x, y: ENTRANCE.y, path: [], mode: 'standing', dest: 'stand', deskIdx: -1, spotIdx: -1,
+          x: room.layout.door.at.x, y: room.layout.door.at.y, path: [], mode: 'standing', dest: 'stand', deskIdx: -1, spotIdx: -1, rev: room.rev,
           seed: buddySeed(s.id, a.id, s.rootAgentId), facing: 1, phase: Math.random() * 10, jumpUntil: 0,
           blinkAt: now + 1000 + Math.random() * 4000, alpha: room.initialized ? 0 : 1,
         }
@@ -210,7 +427,11 @@ export class Office {
         if (c.dest !== 'door') this.sendHome(room, c)
         continue
       }
-      if (c.dest !== want || (want === 'desk' && c.deskIdx < 0)) this.assign(room, c, want, !room.initialized)
+      // The pod moved its waiting line: go to the new one.
+      if (c.rev !== room.rev && c.dest === 'stand' && c.mode !== 'walking') { c.rev = room.rev; this.assign(room, c, 'desk', false); continue }
+      // Someone waiting for a desk only moves once one is actually free.
+      const noDesk = want === 'desk' && c.dest === 'stand' && !room.desks.some((d, i) => (isRoot ? i === 0 : i > 0) && !d.occupant)
+      if (!noDesk && (c.dest !== want || (want === 'desk' && c.deskIdx < 0))) this.assign(room, c, want, !room.initialized)
     }
     for (const [id, c] of room.chars) {
       if (!present.has(id) && c.dest !== 'door') this.sendHome(room, c)
@@ -218,23 +439,26 @@ export class Office {
   }
 
   private assign(room: Room, c: Char, want: Dest, instant: boolean): void {
+    const from = spotOf(room, c)
     this.release(room, c)
-    let target: Pt | undefined
+    let target: Spot | undefined
     if (want === 'desk') {
       const idx = c.isRoot ? 0 : room.desks.findIndex((d, i) => i > 0 && !d.occupant)
       if (idx >= 0) {
         room.desks[idx]!.occupant = c.id
         c.deskIdx = idx
         c.dest = 'desk'
-        target = room.desks[idx]!.seat
+        target = deskSpot(room.desks[idx]!)
       }
     } else if (want === 'couch') {
-      const taken = new Set([...room.chars.values()].filter((o) => o.dest === 'couch').map((o) => o.spotIdx))
-      const idx = COUCH_SPOTS.findIndex((_, i) => !taken.has(i))
+      // On the open floor the lounge is shared by every team.
+      const pool = room.layout.sharedCouch ? [...this.rooms.values()] : [room]
+      const taken = new Set(pool.flatMap((r) => [...r.chars.values()]).filter((o) => o.dest === 'couch').map((o) => o.spotIdx))
+      const idx = room.layout.couch.findIndex((_, i) => !taken.has(i))
       if (idx >= 0) {
         c.spotIdx = idx
         c.dest = 'couch'
-        target = COUCH_SPOTS[idx]
+        target = room.layout.couch[idx]
       }
     }
     if (!target && want === 'couch') {
@@ -245,18 +469,19 @@ export class Office {
     if (!target) {
       // No desk free: hang out by the coffee machine until one opens up.
       const taken = new Set([...room.chars.values()].filter((o) => o.dest === 'stand').map((o) => o.spotIdx))
-      const idx = Math.max(0, STAND_SPOTS.findIndex((_, i) => !taken.has(i)))
+      let idx = 0
+      while (taken.has(idx)) idx++
       c.spotIdx = idx
       c.dest = 'stand'
-      target = STAND_SPOTS[idx % STAND_SPOTS.length]!
+      target = room.layout.stand(idx)
     }
     if (instant) {
-      c.x = target.x
-      c.y = target.y
+      c.x = target.at.x
+      c.y = target.at.y
       c.path = []
       c.mode = c.dest === 'desk' ? 'seated' : c.dest === 'couch' ? 'lounging' : 'standing'
     } else {
-      c.path = route(c, target)
+      c.path = walkTo(c, from, target, room.layout)
       c.mode = 'walking'
     }
   }
@@ -268,14 +493,16 @@ export class Office {
   }
 
   private sendHome(room: Room, c: Char): void {
+    const from = spotOf(room, c)
     this.release(room, c)
     c.dest = 'door'
-    c.path = route(c, ENTRANCE)
+    c.path = walkTo(c, from, room.layout.door, room.layout)
     c.mode = 'walking'
   }
 
   private openDoor(room: Room, now: number): void {
     room.doorUntil = Math.max(room.doorUntil, now + 2600)
+    this.door.until = Math.max(this.door.until, now + 2600)
   }
 
   private effect(room: Room, s: SessionState | undefined, e: ObserverEvent, now: number): void {
@@ -291,7 +518,7 @@ export class Office {
         const text = e.text.replace(/\s+/g, ' ').trim()
         if (e.role === 'user') {
           const root = room.chars.get(s.rootAgentId)
-          this.effects.push({ kind: 'plane', room: room.id, from: { x: 2.0, y: 0.1, z: 1.7 }, to: head(root), born: now, dur: 1700 })
+          this.effects.push({ kind: 'plane', room: room.id, from: room.layout.window, to: head(root), born: now, dur: 1700 })
           if (root) root.bubble = { text, tone: 'user', born: now + 1500, ttl: 6500 }
         } else if (c) {
           c.bubble = { text, tone: e.role === 'agent' ? 'task' : 'say', born: now, ttl: e.role === 'agent' ? 4500 : 7000 }
@@ -328,7 +555,7 @@ export class Office {
           if (this.filedAt.size > 600) for (const k of [...this.filedAt.keys()].slice(0, 300)) this.filedAt.delete(k)
           this.effects.push({ kind: 'diff', room: room.id, agentId: e.agentId, at: head(c), born, dur, typeMs, holdMs, key, path: ch.path, op: ch.op, added: ch.added, removed: ch.removed, lines, chars })
         }
-        const cabinet: Pt3 = { x: CABINET.x + CABINET.w / 2, y: CABINET.y + CABINET.d / 2, z: CABINET.h + 0.1 }
+        const cabinet = room.layout.cabinet
         for (const f of t.files.slice(0, 3)) {
           if (changed.has(f.path)) continue
           const toCabinet = f.op === 'edit' || f.op === 'write' || f.op === 'delete'
@@ -366,7 +593,8 @@ export class Office {
 
   step(dt: number, now: number): void {
     for (const room of this.rooms.values()) {
-      const target = now < room.doorUntil || [...room.chars.values()].some((c) => Math.hypot(c.x - ENTRANCE.x, c.y - ENTRANCE.y) < 1.4 && c.mode === 'walking') ? 1 : 0
+      const ent = room.layout.door.at
+      const target = now < room.doorUntil || [...room.chars.values()].some((c) => Math.hypot(c.x - ent.x, c.y - ent.y) < 1.4 && c.mode === 'walking') ? 1 : 0
       room.doorOpen += (target - room.doorOpen) * Math.min(1, dt * 6)
       for (const [id, c] of room.chars) {
         c.alpha = Math.min(1, c.alpha + dt * 2.5)
@@ -389,7 +617,13 @@ export class Office {
         if (now > c.blinkAt + 140) c.blinkAt = now + 2200 + Math.random() * 4200
         if (c.bubble && now > c.bubble.born + c.bubble.ttl) c.bubble = undefined
       }
-      stepCat(room, dt, now)
+      if (!this.mono) stepCat(room.cat, CAT_SPOTS, dt, now)
+    }
+    if (this.mono) {
+      // The shared door opens for anyone near it on the open floor.
+      const near = [...this.rooms.values()].some((r) => [...r.chars.values()].some((c) => c.mode === 'walking' && Math.hypot(c.x - r.layout.door.at.x, c.y - r.layout.door.at.y) < 1.4))
+      this.door.open += ((now < this.door.until || near ? 1 : 0) - this.door.open) * Math.min(1, dt * 6)
+      stepCat(this.cat, floorCatSpots(this.stage), dt, now)
     }
     this.effects = this.effects.filter((e) => now < e.born + e.dur)
   }
@@ -411,14 +645,24 @@ function parsePlan(title: string): { done: number; total: number; label: string 
 }
 
 const CAT_SPOTS: Pt[] = [{ x: 3.2, y: 2.4 }, { x: 7.8, y: 5.3 }, { x: 5.0, y: 8.2 }, { x: 10.6, y: 4.6 }, { x: 1.4, y: 4.2 }, { x: 6.4, y: 7.9 }]
+const floorCatSpots = (st: Stage): Pt[] => [{ x: 3.2, y: 2.1 }, { x: st.w - 3, y: 2.1 }, { x: st.w / 2, y: 2.1 }, { x: 4, y: st.d - 1.2 }, { x: st.w / 2, y: st.d - 1.4 }, { x: 1.2, y: st.d - 3.2 }]
 
-function stepCat(room: Room, dt: number, now: number): void {
-  const cat = room.cat
+/** Where a worker currently belongs (for walking away from it). */
+function spotOf(room: Room, c: Char): Spot | undefined {
+  if (c.dest === 'desk' && c.deskIdx >= 0) return deskSpot(room.desks[c.deskIdx]!)
+  if (c.dest === 'couch' && c.spotIdx >= 0) return room.layout.couch[c.spotIdx]
+  if (c.dest === 'stand' && c.spotIdx >= 0) return room.layout.stand(c.spotIdx)
+  return undefined
+}
+
+const deskSpot = (d: Desk): Spot => ({ at: d.seat, via: d.via ?? [] })
+
+function stepCat(cat: Cat, spots: Pt[], dt: number, now: number): void {
   cat.phase += dt
   if (now < cat.napUntil) return
   if (!cat.path.length) {
     if (Math.random() < 0.004) {
-      const spot = CAT_SPOTS[Math.floor(Math.random() * CAT_SPOTS.length)]!
+      const spot = spots[Math.floor(Math.random() * spots.length)]!
       cat.path = [{ x: spot.x, y: cat.y }, { ...spot }]
     } else if (Math.random() < 0.002) {
       cat.napUntil = now + 8000 + Math.random() * 12000

@@ -22,7 +22,8 @@ Mission Control's theme. `?viz=<id>` in the URL and the `V` key also switch.
 | | |
 |---|---|
 | **Mission Control** (`mission`, the default) | A compact IDE-style dashboard: what needs you, what is running, and how fast, with a blob buddy per agent. Themeable. See below. |
-| **Agent Office** (`office`) | A cute isometric office. Each session is a room and each agent a little blob. See below. |
+| **Agent Office** (`office`) | A cute isometric office. Every session is a team pod on one open-plan floor (or its own room), and each agent a little blob. See below. |
+| **The Court** (`court`) | An isometric Tang–Song audience hall (朝堂). Every session is a delegation in one great hall (or its own hall), the lead is the Chancellor and subagents are ministers who raise their tablet when they need you. See below. |
 
 ### Mission Control
 
@@ -47,13 +48,13 @@ Everything animates in and out (new rows, diffs, tiles, counters) and respects `
 
 ### Agent Office
 
-![Agent Office by day](images/office-day.png)
+![Agent Office by day: every session a team pod on one open-plan floor](images/office-day.png)
 
 How the data maps onto the office:
 
 | What happens | What you see |
 |---|---|
-| A session | A room with the team's colour on the rug and the session title on a plaque by the door. Its lead is the same blob the session has in Mission Control |
+| A session | A team pod on the open-plan floor (or its own room) with the team's colour on the rug and the session title on its sign. Its lead is the same blob the session has in Mission Control |
 | The main agent | The team lead, a blob in a headset, at the big two-monitor desk |
 | A subagent is spawned | The phone rings at the parent's desk, the door swings open and a new blob hops in to a free desk |
 | A subagent finishes | It takes a coffee break on the couch, then heads home through the door |
@@ -98,13 +99,83 @@ same cards as Mission Control's live diff feed (click one to expand); a
 change only appears there once its bubble has been filed. The "need you"
 sticky counts open items.
 
+**One open-plan floor** is the default when more than one session is on
+stage: every session is a team pod on the same floor, with its own rug, a
+hanging sign with the session title, the lead's big desk at the head and rows
+of three desks behind it. A pod grows a row of desks at a time as its team
+grows, and the floor grows to fit the pods (two side by side, then a 2×2,
+then three or four across). The door, coffee counter, filing cabinet,
+whiteboard, wall screen and lounge are shared, so a lead working alone still
+shares a busy room with every other session. Clicking a tab glides the
+camera to that team's pod instead of switching rooms; from far away each pod
+gets a readable banner with a "needs you" count. Choose **A room per
+session** in Settings to go back to separate rooms.
+
 The office has the same themes as Mission Control (Dark, Light, Gruvbox Dark,
 Gruvbox Light or follow the system). A theme colours the controls, the front
 desk and the space around the rooms; day and night lighting is separate and
-still changes the rooms themselves. Theme, name tags, the front desk and
-lighting are all in Settings › Visualizations › Agent Office.
+still changes the rooms themselves. The room layout, theme, name tags, the
+front desk and lighting are all in Settings › Visualizations › Agent Office.
 
 ![Agent Office at night](images/office-night.png)
+
+### The Court
+
+![The Court by day](images/court-day.png)
+
+An imperial audience hall drawn from Tang and Song China. You are the
+emperor: the throne stands empty, and the court comes to you.
+
+| What happens | What you see |
+|---|---|
+| A session | A delegation's bay in the great hall, named after a hall of the Song palace (紫宸殿, 垂拱殿…) on its signboard with the session title; or, with a hall per session, its own hall with the name on the plaque above the throne |
+| The main agent | The Chancellor (宰相) in a purple robe, kneeling at the big desk at the foot of the throne |
+| A subagent | A minister in a 展脚幞头 hat, kneeling at a desk in the west or east rank. Robe colours follow the Tang ranks by depth: purple, crimson, green, blue. Titles follow the subagent type (Explore → 史官 Historian, Plan → 枢密使 Privy Councillor, review → 御史 Censor…) |
+| A subagent is spawned | A gong ripples at the front steps, the Chancellor raises a tiger tally (虎符) and the new minister climbs the steps to a free desk |
+| A subagent finishes | It takes tea in the pavilion, then leaves down the steps |
+| Waiting on you (permission prompt) | The minister walks up before the throne, kneels and **raises the ivory tablet (笏)**. A gold "奏" seal bounces above it, a golden pool pulses on the floor and the empty throne glows |
+| Your prompt | An imperial edict scroll glides down from the throne to the Chancellor, then opens as "圣谕 · FROM YOU" |
+| Editing files | A memorial (奏折) is written out beside the minister: new lines in black ink, removed lines struck through in vermilion (朱批). It is stamped 准 and flies to the archive in the sidebar |
+| Reading or searching | Bamboo slips fly between the archive's pigeonholes and the desk; the minister holds a scroll or a bundle of slips |
+| Running a command | Su Song's astronomical clock tower turns its water wheel and armillary sphere; its drum strikes when the command ends. The minister works an abacus |
+| Web research | A messenger pigeon flies out of the lattice window and comes back when the result arrives |
+| Thinking | Incense smoke curls up into a cloud; the Chancellor's censer smokes harder |
+| A plan / todo update | The hanging scroll beside the throne lists the steps, sealed in red as they are done |
+| A tool fails | Ink spills across the desk and blots the robe |
+| A finished turn | Plum blossom drifts down over the hall and the Chancellor bows |
+| A turn is interrupted | A candle-snuff wisp of smoke |
+| Context window | An incense stick on each desk burns down as the context fills |
+| Tool calls over the last 15 minutes | The landscape on the folding screen behind the throne: each tool kind is a ridge of blue-green mountains |
+
+With several sessions on stage they share **one great hall** (大庆殿) by
+default: every session is a delegation in its own bay, with a signboard
+bearing its hall name and title, its Chancellor kneeling in the front line
+before the throne and its ministers in ranks behind. The hall grows wide, as
+real halls are measured in bays across: one bay on each side of the carpet
+for two delegations, two on each side for up to four, and only then a second
+line. A bay deepens a row of desks at a time as its delegation grows. The
+places before the throne are shared, so ministers from every bay walk up the
+carpet to present their matters. Tabs glide the camera to a bay;
+double-click a bay to do the same. From far away each bay gets a banner with
+a "needs you" count. Choose **A hall per session** in Settings for separate
+halls, each in its own walled courtyard. At night the lanterns, candles and
+stone lanterns light the hall and moonlight falls through the windows.
+
+![The great hall with six delegations](images/court-palace.png)
+
+The sidebar holds the **memorials** (奏章, the shared attention queue; the 准
+seal acknowledges one), the **archive** (档案, filed diffs) and the **court
+diary** (起居注). Click a minister for its appointment certificate (告身):
+title, rank, model, task, recent tools and changes, and the incense gauge.
+Keys are the same as the office: `F`, `L`, `D`, `A`, `J`/`K`, `X`, `Esc`.
+
+Settings › Visualizations › The Court has the halls (one great hall, or a
+hall per session), the palette (Tang vermilion and gold, Song celadon and
+timber, or ink wash), the throne (empty, or seat an
+emperor), how much Chinese the labels use, the panel theme, name tags, the
+sidebar and lighting.
+
+![The Court at night](images/court-night.png)
 
 ## Writing your own
 

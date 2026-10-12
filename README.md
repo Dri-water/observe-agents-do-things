@@ -45,7 +45,13 @@ https://github.com/user-attachments/assets/6bf8c1ef-9c59-4247-a0a8-3441ba648cc5
 
 <sub>Rooms, profile cards, the intercom, the front desk and the night shift.</sub>
 
-Visualizations are plugins over the same data. Two ship today: **Mission Control** (the default), a compact IDE-style dashboard (Dark, Light and Gruvbox themes) built around what needs you, and the **Agent Office**. Pick one in Settings › Visualizations (the `⚙` button, or `Ctrl+,`), where each also has its own options page; Settings also holds the opt-in desktop notifications. Each one owns its entire view: layout, rendering, input and HUD. The office maps spawns to new hires walking in, permission prompts to raised hands, file work to papers flying to the filing cabinet, and finished turns to confetti. See **[docs/VISUALIZATIONS.md](docs/VISUALIZATIONS.md)**, including how to write your own.
+### …or as an imperial court
+
+https://github.com/user-attachments/assets/b0317f4c-3d75-458b-953f-eb8dd4214956
+
+<sub>Every session is a delegation in one great hall, and you are the empty throne. Ministers raise their tablet when they need you, memorials are stamped 准 and filed, and edicts glide down from the throne.</sub>
+
+Visualizations are plugins over the same data. Three ship today: **Mission Control** (the default), a compact IDE-style dashboard (Dark, Light and Gruvbox themes) built around what needs you, the **Agent Office**, and **The Court**, a Tang–Song audience hall where subagents are ministers who raise their tablet when they need you. Pick one in Settings › Visualizations (the `⚙` button, or `Ctrl+,`), where each also has its own options page; Settings also holds the opt-in desktop notifications. Each one owns its entire view: layout, rendering, input and HUD. The office maps spawns to new hires walking in, permission prompts to raised hands, file work to papers flying to the filing cabinet, and finished turns to confetti. See **[docs/VISUALIZATIONS.md](docs/VISUALIZATIONS.md)**, including how to write your own.
 
 ## Quick start
 
@@ -94,7 +100,7 @@ Agent visualisers tend to *be* the harness, or to install themselves into it. Th
 
 ## Features
 
-- **Swappable visualizations.** Each visualization is a plugin that defines its whole view; the core only provides data. Two ship today: *Mission Control* (the default) and *Agent Office*. Adding one is a single module plus one line to register it.
+- **Swappable visualizations.** Each visualization is a plugin that defines its whole view; the core only provides data. Three ship today: *Mission Control* (the default), *Agent Office* and *The Court*. Adding one is a single module plus one line to register it.
 - **Agents with a face.** Every agent gets a blob buddy, drawn by [blobatar](https://github.com/Alain00/blobatar), that types while it edits, peers around while it searches, hops with a "!" when it needs your approval and dozes off when idle. What it acts out comes from `sessionActivity` / `agentActivity` in the protocol, so any frontend can use the same signal.
 - **Subagents in both harnesses.** Claude Code `Agent`/`Task` subagents are linked through their `meta.json` sidecars. Codex `spawn_agent` threads are rebuilt into one tree across separate rollout files.
 - **Tells you when you're needed.** Sessions move between *working*, *waiting* (a tool pending with no transcript activity, almost always a permission prompt) and *idle*. A shared attention model, in the protocol so every frontend agrees, flags approvals waiting, finished turns, failure streaks, nearly full context and long-running tools. Optional desktop notifications, a chime and a tab-title count work in every visualization.
@@ -132,7 +138,7 @@ flowchart LR
     API["REST + Server-Sent Events"]
   end
   subgraph Frontends["Frontends (pixels)"]
-    W["Web app<br/>Mission Control · Agent Office"]
+    W["Web app<br/>Mission Control · Agent Office · Court"]
     TD["Terminal dashboard"]
     N["Notifier"]
     X["…yours"]
@@ -282,7 +288,7 @@ Transcripts contain your code and your conversations, so `oadt` is careful with 
 | [`@oadt/server`](packages/server) | HTTP + SSE API, the `oadt` CLI | core, protocol |
 | [`@oadt/client`](packages/client) | Browser/Node live client with resume | protocol |
 | [`@oadt/react`](packages/react) | React provider and hooks (`useSessions`, `useSession`, `useAgentTree`, `useOpenTools`, `useEvents`…) | client, react (peer) |
-| [`apps/web`](apps/web) | The bundled web app: a host plus the Mission Control and Agent Office visualizations | client, blobatar |
+| [`apps/web`](apps/web) | The bundled web app: a host plus the Mission Control, Agent Office and Court visualizations | client, blobatar |
 
 ## Development
 
