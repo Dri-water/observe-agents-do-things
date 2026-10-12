@@ -1,6 +1,6 @@
 {
   "name": "observe-agents-do-things",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Watch Claude Code and Codex agents work in real time — a read-only observer with a clean event API and swappable frontends.",
   "license": "MIT",
