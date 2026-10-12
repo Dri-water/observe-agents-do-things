@@ -109,6 +109,8 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
+      # Trusted publishing needs a recent npm; the one bundled with Node can lag behind the registry.
+      - run: npm install -g npm@latest
       # Trusted publishing: npmjs.com trusts this workflow, so no token is stored anywhere.
       - name: Publish
         working-directory: packages/cli
