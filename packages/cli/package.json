@@ -1,6 +1,6 @@
 {
   "name": "observe-agents-do-things",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Watch Claude Code and Codex agents work in real time: a read-only observer with a live dashboard. Run it with npx.",
   "license": "MIT",
   "type": "module",

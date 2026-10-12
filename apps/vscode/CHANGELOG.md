@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+
+- VS Code: skip observers older than the extension
+
 ## 0.2.0
 
 - Make the shared rooms lived-in: team looks, decor, mess, a bigger lounge
