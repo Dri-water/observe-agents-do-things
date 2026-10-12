@@ -1,8 +1,8 @@
 # Publishes a release when a version tag is pushed (see scripts/release.mjs).
-# npm uses trusted publishing (configured on npmjs.com, no token). The
-# Marketplace and Open VSX publish only when their token is set as a secret:
-#   VSCE_PAT  VS Code Marketplace (Azure DevOps token, Marketplace: Manage)
-#   OVSX_PAT  Open VSX (open-vsx.org access token), for Cursor, Windsurf and VSCodium
+# npm uses trusted publishing (configured on npmjs.com, no token). The VS Code
+# Marketplace publishes only when VSCE_PAT (an Azure DevOps token with
+# Marketplace: Manage) is set as a repository secret. Editors that use Open VSX
+# (Cursor, Windsurf, VSCodium) install the .vsix from the GitHub release.
 # The build job never sees a token; each publish job only sees its own.
 name: Release
 
@@ -92,29 +92,6 @@ jobs:
         run: npx --yes @vscode/vsce publish --packagePath observe-agents-do-things.vsix
       - if: env.VSCE_PAT == ''
         run: echo "::notice::VSCE_PAT is not set; skipped the VS Code Marketplace."
-
-  openvsx:
-    name: Open VSX
-    needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    env:
-      OVSX_PAT: ${{ secrets.OVSX_PAT }}
-    steps:
-      - uses: actions/download-artifact@v4
-        if: env.OVSX_PAT != ''
-        with:
-          name: release
-      - uses: actions/setup-node@v5
-        if: env.OVSX_PAT != ''
-        with:
-          node-version: 22
-      - if: env.OVSX_PAT != ''
-        run: |
-          npx --yes ovsx create-namespace dri-water -p "$OVSX_PAT" || echo "Namespace exists."
-          npx --yes ovsx publish observe-agents-do-things.vsix -p "$OVSX_PAT"
-      - if: env.OVSX_PAT == ''
-        run: echo "::notice::OVSX_PAT is not set; skipped Open VSX."
 
   npm:
     name: npm

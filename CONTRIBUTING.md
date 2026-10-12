@@ -48,9 +48,8 @@ This bumps the version in the published packages, adds the commits since the las
 
 | Where | Needs the repository secret |
 |---|---|
-| GitHub release with the `.vsix` | nothing |
+| GitHub release with the `.vsix` (also how Cursor, Windsurf and VSCodium install it) | nothing |
 | VS Code Marketplace | `VSCE_PAT` |
-| Open VSX (Cursor, Windsurf, VSCodium) | `OVSX_PAT` |
 | npm, for `npx observe-agents-do-things` | nothing: [trusted publishing](https://docs.npmjs.com/trusted-publishers) from this workflow |
 
 A store whose secret isn't set is skipped with a notice, so releases keep working while a token is missing.
