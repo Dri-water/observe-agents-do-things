@@ -1,0 +1,45 @@
+# Fails while the VS Code Marketplace is behind the latest GitHub release.
+# The Marketplace is updated by hand (see CONTRIBUTING.md › Releasing), so this
+# turns red after each release until the .vsix is uploaded, then green again.
+name: Marketplace in sync
+
+on:
+  workflow_run:
+    workflows: [Release]
+    types: [completed]
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Marketplace version matches the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          tag=$(gh release view --json tagName -q .tagName)
+          want="${tag#v}"
+          have=$(npx --yes @vscode/vsce show dri-water.observe-agents-do-things --json | node -p "JSON.parse(require('fs').readFileSync(0)).versions[0].version")
+          echo "Latest release: $want, Marketplace: $have"
+          if [ "$have" != "$want" ]; then
+            {
+              echo "## The VS Code Marketplace is behind: $have, latest release is $want"
+              echo
+              echo "1. Download \`observe-agents-do-things-$want.vsix\` from https://github.com/$GH_REPO/releases/tag/$tag"
+              echo "2. Open https://marketplace.visualstudio.com/manage/publishers/dri-water"
+              echo "3. Click ⋯ next to Observe Agents › **Update**, choose the **Visual Studio Code** upload and pick the file."
+              echo
+              echo "Verification takes a few minutes. Re-run this workflow afterwards, or wait for the daily check."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::Marketplace has $have, latest release is $want. Upload the .vsix by hand: see the run summary or CONTRIBUTING.md › Releasing."
+            exit 1
+          fi
