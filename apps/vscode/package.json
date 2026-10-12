@@ -2,7 +2,7 @@
   "name": "observe-agents-do-things",
   "displayName": "Observe Agents: live view of Claude Code and Codex",
   "description": "Watch your Claude Code and Codex agents work in real time, right in VS Code. Read-only: no hooks, no wrappers, no API keys.",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "publisher": "dri-water",
   "license": "MIT",
   "private": true,

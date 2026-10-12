@@ -24,7 +24,7 @@ import { extname, join, normalize, resolve, sep } from 'node:path'
 import { EVENT_KINDS, isSafeKey, pickSessions, PROTOCOL_VERSION, type EventDraft, type ObserverEvent, type SessionState } from '@oadt/protocol'
 import type { Observer } from '@oadt/core'
 
-export const VERSION = '0.1.1'
+export const VERSION = '0.2.0'
 
 export interface ServerOptions {
   observer: Observer

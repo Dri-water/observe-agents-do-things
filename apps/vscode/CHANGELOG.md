@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.0
+
+- Make the shared rooms lived-in: team looks, decor, mess, a bigger lounge
+- Add The Court visualizer; one shared room by default in Court and Office
+- Document the manual VS Code Marketplace upload
+- Check that the Marketplace matches the latest release; document manual uploads
+- Lead the quick start with npx; normalize the CLI bin paths
+
 ## 0.1.1
 
 - Release workflow: publish to npm with the latest npm
