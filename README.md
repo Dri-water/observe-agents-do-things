@@ -13,6 +13,7 @@
 <p align="center">
   <a href="https://github.com/Dri-water/observe-agents-do-things/actions/workflows/ci.yml"><img src="https://github.com/Dri-water/observe-agents-do-things/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+  <a href="https://www.npmjs.com/package/observe-agents-do-things"><img src="https://img.shields.io/npm/v/observe-agents-do-things?logo=npm" alt="npm"></a>
   <img src="https://img.shields.io/badge/node-%E2%89%A5%2020.11-339933?logo=nodedotjs&logoColor=white" alt="Node 20.11 or newer">
   <img src="https://img.shields.io/badge/core%20dependencies-0-brightgreen" alt="No runtime dependencies in the core">
   <a href="https://marketplace.visualstudio.com/items?itemName=dri-water.observe-agents-do-things"><img src="https://img.shields.io/visual-studio-marketplace/v/dri-water.observe-agents-do-things?label=VS%20Code&logo=visualstudiocode" alt="VS Code Marketplace"></a>
@@ -48,20 +49,25 @@ Visualizations are plugins over the same data. Two ship today: **Mission Control
 
 ## Quick start
 
-Requires Node.js 20.11 or newer.
+Requires Node.js 20.11 or newer. One command, nothing to install:
 
 ```bash
-git clone https://github.com/Dri-water/observe-agents-do-things
-cd observe-agents-do-things
-npm install
-npm run build
-npm start            # → http://127.0.0.1:4545
+npx observe-agents-do-things          # → http://127.0.0.1:4545
 ```
 
 Then start (or keep using) Claude Code or Codex anywhere on the machine. Nothing running? Try the simulator:
 
 ```bash
-npm run demo
+npx observe-agents-do-things --demo
+```
+
+`npm install -g observe-agents-do-things` gives you the short `oadt` command. To run from source:
+
+```bash
+git clone https://github.com/Dri-water/observe-agents-do-things
+cd observe-agents-do-things
+npm install && npm run build
+npm start            # or: npm run demo
 ```
 
 ### VS Code

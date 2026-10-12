@@ -5,8 +5,8 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "observe-agents-do-things": "./dist/cli.js",
-    "oadt": "./dist/cli.js"
+    "observe-agents-do-things": "dist/cli.js",
+    "oadt": "dist/cli.js"
   },
   "files": [
     "dist",
