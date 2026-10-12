@@ -15,6 +15,7 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/node-%E2%89%A5%2020.11-339933?logo=nodedotjs&logoColor=white" alt="Node 20.11 or newer">
   <img src="https://img.shields.io/badge/core%20dependencies-0-brightgreen" alt="No runtime dependencies in the core">
+  <a href="https://marketplace.visualstudio.com/items?itemName=dri-water.observe-agents-do-things"><img src="https://img.shields.io/visual-studio-marketplace/v/dri-water.observe-agents-do-things?label=VS%20Code&logo=visualstudiocode" alt="VS Code Marketplace"></a>
   <img src="https://img.shields.io/badge/works%20with-Claude%20Code%20%C2%B7%20Codex-d97757" alt="Works with Claude Code and Codex">
 </p>
 
@@ -67,7 +68,7 @@ npm run demo
 
 The **Observe Agents** extension puts the dashboard in the side bar, the bottom panel or an editor tab, and adds a status bar item that says when an agent needs you. It uses the observer on `127.0.0.1:4545` (the CLI or Docker) when one is running; otherwise it runs its own, shared by all your VS Code windows.
 
-Download [`observe-agents-do-things-0.1.0.vsix`](https://github.com/Dri-water/observe-agents-do-things/releases/download/v0.1.0/observe-agents-do-things-0.1.0.vsix) from the [latest release](https://github.com/Dri-water/observe-agents-do-things/releases/latest), then run **Extensions: Install from VSIX…** in VS Code. To build it yourself, run `npm run build:vscode`.
+Install **[Observe Agents from the VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=dri-water.observe-agents-do-things)**, or search for "Observe Agents" in the Extensions view. Every [release](https://github.com/Dri-water/observe-agents-do-things/releases/latest) also has the `.vsix` attached, for **Extensions: Install from VSIX…**. To build it yourself, run `npm run build:vscode`.
 
 ### Docker
 

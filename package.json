@@ -27,7 +27,8 @@
     "clean": "node scripts/clean.mjs",
     "build:examples": "npm run build --workspace examples/react-dashboard",
     "build:cli": "npm run build && node scripts/build-cli.mjs",
-    "build:vscode": "npm run build && npm run package --workspace apps/vscode"
+    "build:vscode": "npm run build && npm run package --workspace apps/vscode",
+    "release": "node scripts/release.mjs"
   },
   "engines": {
     "node": ">=20.11"

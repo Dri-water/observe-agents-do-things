@@ -37,3 +37,20 @@ core or protocol, not in a frontend.**
   renames and removals need a `PROTOCOL_VERSION` bump.
 - **Run the whole suite.** `npm test` runs unit tests and an end-to-end
   server + client test.
+
+## Releasing
+
+```bash
+npm run release -- patch    # or minor, major, or an exact version like 1.0.0
+```
+
+This bumps the version in the published packages, adds the commits since the last release to the extension's changelog, commits, tags and pushes. The tag starts the [Release workflow](.github/workflows/release.yml). It tests and packages everything, then publishes:
+
+| Where | Needs the repository secret |
+|---|---|
+| GitHub release with the `.vsix` | nothing |
+| VS Code Marketplace | `VSCE_PAT` |
+| Open VSX (Cursor, Windsurf, VSCodium) | `OVSX_PAT` |
+| npm, for `npx observe-agents-do-things` | `NPM_TOKEN` |
+
+A store whose secret isn't set is skipped with a notice, so releases keep working while a token is missing.
