@@ -53,3 +53,14 @@ This bumps the version in the published packages, adds the commits since the las
 | npm, for `npx observe-agents-do-things` | nothing: [trusted publishing](https://docs.npmjs.com/trusted-publishers) from this workflow |
 
 A store whose secret isn't set is skipped with a notice, so releases keep working while a token is missing.
+
+### Updating the VS Code Marketplace by hand
+
+`VSCE_PAT` isn't set, so the Marketplace is updated by hand after each release. The [Marketplace in sync](.github/workflows/marketplace.yml) workflow runs after every release and once a day, and fails while the Marketplace is behind the latest release, so a red run means an upload is due.
+
+1. Download `observe-agents-do-things-<version>.vsix` from the [latest release](https://github.com/Dri-water/observe-agents-do-things/releases/latest).
+2. Open the [dri-water publisher page](https://marketplace.visualstudio.com/manage/publishers/dri-water) (sign in with the Microsoft account that owns the publisher).
+3. Click **⋯** next to Observe Agents › **Update**, and upload the file. If it asks which product, choose **Visual Studio Code**: the Visual Studio uploader fails with "Value cannot be null. Parameter name: v1".
+4. Verification takes a few minutes. Then re-run the workflow from the Actions tab, or let the daily check turn green.
+
+To automate it instead, create an Azure DevOps personal access token with the **Marketplace › Manage** scope and **All accessible organizations**, and save it with `gh secret set VSCE_PAT`. The Release workflow then publishes to the Marketplace itself.
