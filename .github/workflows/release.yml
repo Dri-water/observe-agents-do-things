@@ -1,8 +1,8 @@
 # Publishes a release when a version tag is pushed (see scripts/release.mjs).
-# Each store is published only when its token is set as a repository secret:
+# npm uses trusted publishing (configured on npmjs.com, no token). The
+# Marketplace and Open VSX publish only when their token is set as a secret:
 #   VSCE_PAT  VS Code Marketplace (Azure DevOps token, Marketplace: Manage)
 #   OVSX_PAT  Open VSX (open-vsx.org access token), for Cursor, Windsurf and VSCodium
-#   NPM_TOKEN npm (automation token), for `npx observe-agents-do-things`
 # The build job never sees a token; each publish job only sees its own.
 name: Release
 
@@ -124,20 +124,15 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    env:
-      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - uses: actions/download-artifact@v4
-        if: env.NODE_AUTH_TOKEN != ''
         with:
           name: release
       - uses: actions/setup-node@v5
-        if: env.NODE_AUTH_TOKEN != ''
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
-      - if: env.NODE_AUTH_TOKEN != ''
+      # Trusted publishing: npmjs.com trusts this workflow, so no token is stored anywhere.
+      - name: Publish
         working-directory: packages/cli
-        run: npm publish --provenance --access public
-      - if: env.NODE_AUTH_TOKEN == ''
-        run: echo "::notice::NPM_TOKEN is not set; skipped npm."
+        run: npm publish --access public
